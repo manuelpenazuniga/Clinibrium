@@ -174,6 +174,12 @@ async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch)
     done_payload = events[-1][1]
     assert done_payload["audit_event_id"] is not None
     assert done_payload["urgency"] == Urgency.ambulatoria.value
+    # Artefacto auditable FHIR incluido en el done event.
+    bundle = done_payload["fhir_bundle"]
+    assert bundle["resourceType"] == "Bundle"
+    assert any(
+        e["resource"]["resourceType"] == "AuditEvent" for e in bundle["entry"]
+    )
 
     # Payload de redflag y rails: shape desidentificado correcto.
     redflag_payload = events[0][1]

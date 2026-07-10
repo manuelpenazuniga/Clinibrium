@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from clinibrium.contracts.audit import AuditEvent
 from clinibrium.contracts.enums import Diagnosis, ForcedAction, Urgency
 
 
@@ -70,3 +71,4 @@ class PipelineResult(BaseModel):
     forced_actions: set[ForcedAction] = set()
     applied_rails: list[str] = []
     audit_event_id: str | None = None
+    audit_event: AuditEvent | None = None  # el AuditEvent emitido (para FHIR/frontend)

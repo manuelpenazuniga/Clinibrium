@@ -29,6 +29,7 @@ from fastapi.responses import StreamingResponse
 from clinibrium.config import get_settings
 from clinibrium.contracts.features import CaseFeatures
 from clinibrium.contracts.results import PipelineResult
+from clinibrium.fhir import to_bundle
 from clinibrium.orchestrator import evaluate as orchestrator_evaluate
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,13 @@ async def _stream_pipeline(features: CaseFeatures) -> AsyncIterator[bytes]:
                 recording_mode=recording_mode,
                 on_stage=on_stage,
             )
-            await queue.put({"event": "done", "data": _serialize_result(result)})
+            done_data = _serialize_result(result)
+            if result.audit_event is not None:
+                # Artefacto auditable FHIR (Bundle IPS-CL) para el frontend/jurado.
+                done_data["fhir_bundle"] = to_bundle(
+                    result, features, result.audit_event
+                )
+            await queue.put({"event": "done", "data": done_data})
         except Exception as exc:  # noqa: BLE001 — el orchestrator ya emitió AuditEvent de error
             logger.exception("SSE: orchestrator.evaluate falló — emitiendo event: error")
             await queue.put(
