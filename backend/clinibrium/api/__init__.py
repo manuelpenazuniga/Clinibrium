@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from clinibrium.api.evaluate import router as evaluate_router
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -23,6 +25,8 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "clinibrium"}
+
+    app.include_router(evaluate_router)
 
     return app
 

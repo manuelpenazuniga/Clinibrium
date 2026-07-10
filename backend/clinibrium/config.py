@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Audit persistence — best-effort JSONL fallback cuando Postgres no está.
     AUDIT_LOG_PATH: str = "./audit_events.jsonl"
 
+    # AD-6 / regla dura 2: recording_mode es server-side. NUNCA se toma del
+    # body del request — se fija acá (env / .env) y se pasa a orchestrator.
+    # Default False: ambulatorio usa Haiku 4.5 (costo); True fuerza Opus 4.8
+    # para demos / gold-set evaluation.
+    RECORDING_MODE: bool = False
+
 
 _settings: Settings | None = None
 

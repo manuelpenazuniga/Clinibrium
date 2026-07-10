@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable
 
 import clinibrium.audit.engine as _audit_engine
 import clinibrium.ml_client as _ml_client
@@ -35,6 +36,67 @@ from clinibrium.redflag_engine import evaluate as redflag_evaluate
 
 logger = logging.getLogger(__name__)
 
+StageHook = Callable[[str, Any], Awaitable[None]]
+"""Hook observacional: recibe (stage_name, payload) tras cada paso del pipeline.
+El LLM/cliente NUNCA debe fijar urgencia vinculante — esto es puramente
+observacional (AD-6 / regla dura 2). Un fallo del hook se loguea y NO
+rompe el pipeline ni afecta INV-4."""
+
+
+async def _notify(
+    on_stage: StageHook | None,
+    stage: str,
+    payload: Any,
+) -> None:
+    """Invoca el hook observacional con guarda fail-safe.
+
+    Si el hook es None, no hace nada. Si el hook levanta, SOLO loguea —
+    nunca propaga (un fallo del observador no debe afectar el pipeline).
+    """
+    if on_stage is None:
+        return
+    try:
+        await on_stage(stage, payload)
+    except Exception:
+        logger.exception(
+            "on_stage hook failed (stage=%s) — pipeline continúa sin observabilidad",
+            stage,
+        )
+
+
+def _redflag_payload(red_flag: RedFlagResult) -> dict[str, Any]:
+    return {
+        "red_flag_activa": red_flag.red_flag_activa,
+        "hits_count": len(red_flag.hits),
+    }
+
+
+def _differential_payload(differential: DifferentialResult) -> dict[str, Any]:
+    top = [
+        {"diagnosis": c.diagnosis.value, "score": c.score, "rule_ids": c.rule_ids}
+        for c in differential.candidates[:5]
+    ]
+    return {"top_candidates": top}
+
+
+def _ml_payload(ml: Any) -> dict[str, Any]:
+    return {"available": ml is not None}
+
+
+def _reasoning_payload(reasoning: Any) -> dict[str, Any]:
+    return {
+        "available": reasoning is not None,
+        "model_used": reasoning.model_used if reasoning is not None else None,
+    }
+
+
+def _rails_payload(sealed: PipelineResult) -> dict[str, Any]:
+    return {
+        "urgency": sealed.urgency.value,
+        "forced_actions": sorted(a.value for a in sealed.forced_actions),
+        "applied_rails": list(sealed.applied_rails),
+    }
+
 
 async def evaluate(
     features: CaseFeatures,
@@ -42,6 +104,7 @@ async def evaluate(
     recording_mode: bool = False,
     grounding: Grounding | None = None,
     now: datetime | None = None,
+    on_stage: StageHook | None = None,
 ) -> PipelineResult:
     """Evalúa un caso clínico completo — pipeline end-to-end de VertigoDx.
 
@@ -51,6 +114,11 @@ async def evaluate(
         grounding: implementación de Grounding inyectable (tests); si None,
                    usa `get_grounding()`.
         now: timestamp inyectable para `AuditEvent.occurred_at` (tests determinísticos).
+        on_stage: hook observacional opcional, invocado tras cada paso del
+            pipeline con (stage_name, payload). PURAMENTE OBSERVACIONAL:
+            un fallo del hook se loguea y NO afecta el resultado, urgencia
+            ni auditoría. Si es None, el pipeline se comporta idéntico a
+            versiones anteriores (INV-4 / tests existentes sin cambios).
 
     Returns:
         PipelineResult sellado (post-rails) con audit_event_id poblado.
@@ -66,12 +134,15 @@ async def evaluate(
     try:
         # ── Paso 1: RedFlagEngine (determinista, separado) ──────────────────
         red_flag = redflag_evaluate(features)
+        await _notify(on_stage, "redflag", _redflag_payload(red_flag))
 
         # ── Paso 2: DifferentialEngine (reglas ICVD) ───────────────────────
         differential = differential_evaluate(features)
+        await _notify(on_stage, "differential", _differential_payload(differential))
 
         # ── Paso 3: ML opcional (track B) — None si B down (INV-6) ─────────
         ml = await _ml_client.predict(features)
+        await _notify(on_stage, "ml", _ml_payload(ml))
 
         # ── Paso 4: Grounding retrieval (AD-12) ─────────────────────────────
         _grounding = grounding if grounding is not None else get_grounding()
@@ -88,6 +159,7 @@ async def evaluate(
         )
         if reasoning is not None:
             reasoner_status = "ok"
+        await _notify(on_stage, "reasoning", _reasoning_payload(reasoning))
 
         # ── Paso 6: Ensamblar PipelineResult preliminar ────────────────────
         case_id = _derive_case_id(features)
@@ -104,6 +176,7 @@ async def evaluate(
 
         # ── Paso 7: Rieles — urgencia / forced_actions finales (GANAN) ────
         sealed = _rails.apply_rails(result, features)
+        await _notify(on_stage, "rails", _rails_payload(sealed))
 
         # ── Paso 8: Emitir AuditEvent ──────────────────────────────────────
         event = await _audit_engine.emit(
