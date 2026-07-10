@@ -192,6 +192,7 @@ export interface PipelineResult {
   audit_event_id: string | null;
   audit_event: AuditEvent | null;
   fhir_bundle?: Record<string, unknown>;
+  bundle_sha256?: string;
 }
 
 export type StageName =

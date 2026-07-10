@@ -4,15 +4,13 @@ import { useCallback, useRef, useState } from "react";
 import type {
   CaseFeatures,
   CasePreset,
-  DifferentialResult,
   PipelineResult,
-  PredictResponse,
   ReasonerOutput,
-  RedFlagResult,
   StageEvent,
   StageName,
 } from "@/lib/types";
 import { CASE_PRESETS } from "@/lib/presets";
+import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -87,6 +85,59 @@ function parseSSEEvents(
   return { events, remainder: remaining };
 }
 
+async function runEvaluation(
+  features: CaseFeatures,
+  killReasoner: boolean,
+  signal: AbortSignal
+): Promise<PipelineResult> {
+  const url = killReasoner
+    ? `${API_URL}/api/evaluate?debug_kill_reasoner=true`
+    : `${API_URL}/api/evaluate`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(features),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("ReadableStream not supported");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PipelineResult | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const { events, remainder } = parseSSEEvents(buffer);
+    buffer = remainder;
+
+    for (const evt of events) {
+      if (evt.stage === "done") {
+        result = evt.data as PipelineResult;
+      } else if (evt.stage === "error") {
+        const errData = evt.data as { error: string; message: string };
+        throw new Error(`${errData.error}: ${errData.message}`);
+      }
+    }
+  }
+
+  if (!result) {
+    throw new Error("No result received from pipeline");
+  }
+  return result;
+}
+
 export default function PipelineDemo() {
   const [selectedPreset, setSelectedPreset] = useState<CasePreset | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -97,7 +148,13 @@ export default function PipelineDemo() {
   const [stageData, setStageData] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showFhirModal, setShowFhirModal] = useState(false);
+  const [killReasoner, setKillReasoner] = useState(false);
+  const [forkResult, setForkResult] = useState<{
+    original: PipelineResult;
+    forked: PipelineResult;
+    changedFeature: string;
+  } | null>(null);
+  const [isForking, setIsForking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleSelectPreset = useCallback((preset: CasePreset) => {
@@ -107,6 +164,7 @@ export default function PipelineDemo() {
     setStageData({});
     setResult(null);
     setError(null);
+    setForkResult(null);
   }, []);
 
   const handleEvaluate = useCallback(async () => {
@@ -124,9 +182,14 @@ export default function PipelineDemo() {
     setStageData({});
     setResult(null);
     setError(null);
+    setForkResult(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/evaluate`, {
+      const url = killReasoner
+        ? `${API_URL}/api/evaluate?debug_kill_reasoner=true`
+        : `${API_URL}/api/evaluate`;
+
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(selectedPreset.features as CaseFeatures),
@@ -180,20 +243,42 @@ export default function PipelineDemo() {
       setIsStreaming(false);
       setActiveStage(null);
     }
-  }, [selectedPreset]);
+  }, [selectedPreset, killReasoner]);
 
-  const handleDownloadFhir = useCallback(() => {
-    if (!result?.fhir_bundle) return;
-    const blob = new Blob([JSON.stringify(result.fhir_bundle, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `clinibrium-fhir-${result.case_id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [result]);
+  const handleFork = useCallback(async () => {
+    if (!selectedPreset || !result) return;
+
+    setIsForking(true);
+    setForkResult(null);
+
+    const forkedFeatures: CaseFeatures = {
+      ...selectedPreset.features,
+      focal_signs: ["diplopia"],
+      truncal_ataxia_severe: true,
+    };
+
+    const controller = new AbortController();
+
+    try {
+      const [originalResult, forkedResult] = await Promise.all([
+        runEvaluation(selectedPreset.features, killReasoner, controller.signal),
+        runEvaluation(forkedFeatures, killReasoner, controller.signal),
+      ]);
+
+      setForkResult({
+        original: originalResult,
+        forked: forkedResult,
+        changedFeature: "focal_signs: [diplopia], truncal_ataxia_severe: true",
+      });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError(
+        err instanceof Error ? err.message : "Error en fork clínico"
+      );
+    } finally {
+      setIsForking(false);
+    }
+  }, [selectedPreset, result, killReasoner]);
 
   const hasResults = result !== null || Object.keys(stageData).length > 0;
 
@@ -214,7 +299,15 @@ export default function PipelineDemo() {
         ))}
       </div>
 
-      <div style={{ marginBottom: "1.5rem" }}>
+      <div className="evaluate-controls">
+        <label className="kill-clause-toggle">
+          <input
+            type="checkbox"
+            checked={killReasoner}
+            onChange={(e) => setKillReasoner(e.target.checked)}
+          />
+          <span>Simular caída del razonador (Kill Claude)</span>
+        </label>
         <button
           className="btn-primary"
           disabled={!selectedPreset || isStreaming}
@@ -230,6 +323,13 @@ export default function PipelineDemo() {
           )}
         </button>
       </div>
+
+      {killReasoner && (
+        <div className="kill-clause-info">
+          La seguridad no depende del LLM — urgencia y red flags permanecen
+          idénticas aunque el razonador degrade.
+        </div>
+      )}
 
       {hasResults && (
         <>
@@ -270,14 +370,35 @@ export default function PipelineDemo() {
         </div>
       )}
 
-      {result && <ResultPanel result={result} onShowFhir={() => setShowFhirModal(true)} />}
+      {result && (
+        <>
+          <ClinicalCaseReceipt result={result} />
 
-      {showFhirModal && result?.fhir_bundle && (
-        <FhirModal
-          bundle={result.fhir_bundle}
-          onClose={() => setShowFhirModal(false)}
-          onDownload={handleDownloadFhir}
-        />
+          <div className="fork-section">
+            <button
+              className="btn-secondary"
+              onClick={handleFork}
+              disabled={isForking || !selectedPreset}
+              type="button"
+            >
+              {isForking ? (
+                <>
+                  <span className="spinner" /> Forkeando...
+                </>
+              ) : (
+                "Fork clínico: agregar signo focal"
+              )}
+            </button>
+          </div>
+
+          {forkResult && (
+            <ClinicalForkDisplay
+              original={forkResult.original}
+              forked={forkResult.forked}
+              changedFeature={forkResult.changedFeature}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -286,8 +407,6 @@ export default function PipelineDemo() {
 function StageDetailCard({ label, data }: { label: string; data: unknown }) {
   const renderContent = () => {
     if (label === "RedFlag") {
-      // Payload observacional del stage: {red_flag_activa, hits_count}.
-      // El detalle de los hits va en el panel de resultado final (done).
       const d = data as { red_flag_activa: boolean; hits_count: number };
       return (
         <div>
@@ -300,7 +419,6 @@ function StageDetailCard({ label, data }: { label: string; data: unknown }) {
       );
     }
     if (label === "Differential") {
-      // Payload observacional del stage: {top_candidates: [{diagnosis, score, rule_ids}]}.
       const d = data as {
         top_candidates?: { diagnosis: string; score: number; rule_ids: string[] }[];
       };
@@ -320,7 +438,6 @@ function StageDetailCard({ label, data }: { label: string; data: unknown }) {
       );
     }
     if (label === "ML") {
-      // Payload observacional del stage: {available: bool}.
       const d = data as { available?: boolean };
       return (
         <div>
@@ -374,179 +491,80 @@ function StageDetailCard({ label, data }: { label: string; data: unknown }) {
   );
 }
 
-function ResultPanel({
-  result,
-  onShowFhir,
+function ClinicalForkDisplay({
+  original,
+  forked,
+  changedFeature,
 }: {
-  result: PipelineResult;
-  onShowFhir: () => void;
+  original: PipelineResult;
+  forked: PipelineResult;
+  changedFeature: string;
 }) {
-  const safetyActive =
-    result.red_flag.red_flag_activa && result.urgency === "inmediata";
+  const urgencyJumped = original.urgency !== forked.urgency;
 
   return (
-    <div className="result-panel">
-      <h2 className="section-title" style={{ marginTop: 0 }}>
-        3. Resultado
-      </h2>
+    <div className="fork-display">
+      <h3 className="fork-title">Clinical Fork — comparación lado a lado</h3>
+      <p className="fork-changed">
+        <strong>Feature cambiada:</strong> {changedFeature}
+      </p>
 
-      <div style={{ marginBottom: "1rem" }}>
-        <span className={`urgency-badge ${result.urgency}`}>
-          {URGENCY_LABELS[result.urgency] ?? result.urgency}
-        </span>
-      </div>
-
-      {safetyActive && (
-        <div className="safety-banner">
-          <h3>
-            🔴 Riel de seguridad activo
-          </h3>
-          <p>
-            Aunque el ML/LLM sugieran un cuadro benigno, el guardián
-            determinista fuerza derivación inmediata porque hay una red flag
-            activa.
-          </p>
-          {result.red_flag.hits.length > 0 && (
-            <>
-              <strong>Red flags detectadas:</strong>
-              <ul>
-                {result.red_flag.hits.map((h) => (
-                  <li key={h.id}>
-                    <strong>{h.id}</strong> — {h.label}
-                  </li>
-                ))}
-              </ul>
-            </>
+      <div className="fork-grid">
+        <div className="fork-card">
+          <h4>Caso original</h4>
+          <span className={`urgency-badge ${original.urgency}`}>
+            {URGENCY_LABELS[original.urgency] ?? original.urgency}
+          </span>
+          {original.red_flag.red_flag_activa && (
+            <div className="fork-flag">Red flag activa</div>
           )}
-          {result.applied_rails.length > 0 && (
-            <p style={{ marginTop: "0.5rem" }}>
-              <strong>Rieles aplicados:</strong>{" "}
-              {result.applied_rails.join(", ")}
-            </p>
+          {original.applied_rails.length > 0 && (
+            <div className="fork-rails">
+              Rieles: {original.applied_rails.join(", ")}
+            </div>
+          )}
+          {original.differential.candidates[0] && (
+            <div className="fork-top">
+              Top:{" "}
+              {DIAGNOSIS_LABELS[original.differential.candidates[0].diagnosis] ??
+                original.differential.candidates[0].diagnosis}
+            </div>
           )}
         </div>
-      )}
 
-      {result.forced_actions.length > 0 && (
-        <div className="result-section">
-          <h4>Acciones forzadas</h4>
-          <div className="forced-actions">
-            {result.forced_actions.map((a) => (
-              <span key={a} className="forced-action-tag">
-                {a}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+        <div className="fork-arrow">→</div>
 
-      <div className="result-section">
-        <h4>Diagnóstico diferencial</h4>
-        <ul className="candidate-list">
-          {result.differential.candidates.map((c) => (
-            <li key={c.diagnosis} className="candidate-item">
-              <span className="candidate-name">
-                {DIAGNOSIS_LABELS[c.diagnosis] ?? c.diagnosis}
-              </span>
-              <div className="candidate-bar">
-                <div
-                  className="candidate-bar-fill"
-                  style={{ width: `${(c.score * 100).toFixed(0)}%` }}
-                />
-              </div>
-              <span className="candidate-score">
-                {(c.score * 100).toFixed(0)}%
-              </span>
-            </li>
-          ))}
-          {result.differential.candidates.length === 0 && (
-            <li style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-              Sin candidatos
-            </li>
+        <div className={`fork-card${urgencyJumped ? " fork-escalated" : ""}`}>
+          <h4>Caso forkeado</h4>
+          <span className={`urgency-badge ${forked.urgency}`}>
+            {URGENCY_LABELS[forked.urgency] ?? forked.urgency}
+          </span>
+          {forked.red_flag.red_flag_activa && (
+            <div className="fork-flag">Red flag activa</div>
           )}
-        </ul>
+          {forked.applied_rails.length > 0 && (
+            <div className="fork-rails">
+              Rieles: {forked.applied_rails.join(", ")}
+            </div>
+          )}
+          {forked.differential.candidates[0] && (
+            <div className="fork-top">
+              Top:{" "}
+              {DIAGNOSIS_LABELS[forked.differential.candidates[0].diagnosis] ??
+                forked.differential.candidates[0].diagnosis}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="result-section">
-        <h4>Razonamiento clínico</h4>
-        {result.reasoning ? (
-          <div className="reasoning-block">
-            <p>{result.reasoning.explanation}</p>
-            {result.reasoning.reconciliation && (
-              <p>
-                <strong>Conciliación:</strong>{" "}
-                {result.reasoning.reconciliation}
-              </p>
-            )}
-            <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-              Modelo: {result.reasoning.model_used}
-            </p>
-          </div>
-        ) : (
-          <div className="degraded-banner">
-            Razonador no disponible (degradado) — la seguridad no depende de él.
-          </div>
-        )}
-      </div>
-
-      {result.applied_rails.length > 0 && !safetyActive && (
-        <div className="result-section">
-          <h4>Rieles aplicados</h4>
-          <div className="applied-rails">
-            {result.applied_rails.map((r) => (
-              <code key={r} style={{ marginRight: "0.5rem" }}>
-                {r}
-              </code>
-            ))}
-          </div>
+      {urgencyJumped && (
+        <div className="fork-urgency-jump">
+          Salto de urgencia: {URGENCY_LABELS[original.urgency] ?? original.urgency}
+          {" → "}
+          {URGENCY_LABELS[forked.urgency] ?? forked.urgency}. El riel disparó de
+          verdad al cambiar una sola variable.
         </div>
       )}
-
-      {result.fhir_bundle && (
-        <div className="result-section">
-          <h4>Artefacto auditable</h4>
-          <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", margin: "0 0 0.75rem" }}>
-            Bundle FHIR — cada decisión trazable. Formato de salida auditable.
-          </p>
-          <button className="btn-secondary" onClick={onShowFhir} type="button">
-            Ver artefacto auditable (FHIR)
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FhirModal({
-  bundle,
-  onClose,
-  onDownload,
-}: {
-  bundle: Record<string, unknown>;
-  onClose: () => void;
-  onDownload: () => void;
-}) {
-  return (
-    <div className="modal-overlay" onClick={onClose} role="dialog">
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Artefacto auditable FHIR</h3>
-          <button className="close-btn" onClick={onClose} type="button">
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
-          <pre>{JSON.stringify(bundle, null, 2)}</pre>
-        </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} type="button">
-            Cerrar
-          </button>
-          <button className="btn-primary" onClick={onDownload} type="button">
-            Descargar .json
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

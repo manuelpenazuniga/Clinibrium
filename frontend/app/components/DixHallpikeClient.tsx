@@ -29,6 +29,8 @@ import type {
   StageEvent,
   StageName,
 } from "@/lib/types";
+import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
+import PrivacyEgressMeter from "./PrivacyEgressMeter";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -132,6 +134,8 @@ export default function DixHallpikeClient() {
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [completedStages, setCompletedStages] = useState<Set<StageName>>(new Set());
   const [activeStage, setActiveStage] = useState<StageName | null>(null);
+  const [framesProcessed, setFramesProcessed] = useState(0);
+  const [sentFeatures, setSentFeatures] = useState<CaseFeatures | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -293,6 +297,9 @@ export default function DixHallpikeClient() {
         drawOverlay(face, video.videoWidth, video.videoHeight);
       }
       frameCountRef.current++;
+      if (frameCountRef.current % 10 === 0) {
+        setFramesProcessed(frameCountRef.current);
+      }
     }
 
     const elapsed = (performance.now() - startTimeRef.current) / 1000;
@@ -365,6 +372,8 @@ export default function DixHallpikeClient() {
       setTracking(true);
       setPipelineResult(null);
       setPipelineError(null);
+      setFramesProcessed(0);
+      setSentFeatures(null);
       processFrame();
     } catch (err) {
       setMpError(err instanceof Error ? err.message : String(err));
@@ -396,6 +405,8 @@ export default function DixHallpikeClient() {
         setTracking(true);
         setPipelineResult(null);
         setPipelineError(null);
+        setFramesProcessed(0);
+        setSentFeatures(null);
         processFrame();
       });
     },
@@ -414,8 +425,6 @@ export default function DixHallpikeClient() {
       timing_pattern: "episodic_triggered",
       duration: "under_1min",
       onset: "sudden",
-      // Solo se confirma torsión si el médico observó una dirección concreta.
-      // "none" (no observada) y "" (sin responder) => NO confirmada (fix audit P0.1).
       torsion_confirmed_by_clinician:
         torsion === "right_ear" || torsion === "left_ear",
       nystagmus_latency_s: nystagmusFeatures.nystagmus_latency_s ?? undefined,
@@ -454,6 +463,7 @@ export default function DixHallpikeClient() {
     abortRef.current = controller;
 
     const features = buildCaseFeatures();
+    setSentFeatures(features);
 
     setIsStreaming(true);
     setCompletedStages(new Set());
@@ -526,6 +536,8 @@ export default function DixHallpikeClient() {
     setConfirmError(null);
     setPipelineResult(null);
     setPipelineError(null);
+    setFramesProcessed(0);
+    setSentFeatures(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [stopTracking]);
 
@@ -543,9 +555,8 @@ export default function DixHallpikeClient() {
       <div className="dh-header">
         <h2>Maniobra de Dix-Hallpike — Tier 1</h2>
         <p className="dh-privacy">
-          <strong>Privacidad:</strong> Todo el procesamiento es on-device.
+          <strong>Privacidad:</strong> Video procesado localmente; 0 frames a la red.
           Solo features numéricas desidentificadas se envían al backend.
-          El video nunca sale del dispositivo.
         </p>
       </div>
 
@@ -563,6 +574,11 @@ export default function DixHallpikeClient() {
 
       {mpReady && (
         <>
+          <PrivacyEgressMeter
+            framesProcessed={framesProcessed}
+            features={sentFeatures}
+          />
+
           <div className="dh-controls">
             <div className="dh-source-toggle">
               <button
@@ -801,104 +817,10 @@ export default function DixHallpikeClient() {
                 </div>
               )}
 
-              {pipelineResult && <PipelineResultPanel result={pipelineResult} />}
+              {pipelineResult && <ClinicalCaseReceipt result={pipelineResult} />}
             </div>
           )}
         </>
-      )}
-    </div>
-  );
-}
-
-const DIAGNOSIS_LABELS: Record<string, string> = {
-  bppv_posterior: "VPPB posterior",
-  bppv_horizontal: "VPPB horizontal",
-  meniere: "Ménière",
-  vestibular_migraine: "Migraña vestibular",
-  vestibular_neuritis: "Neuritis vestibular",
-  labyrinthitis: "Laberintitis",
-  central_suspected: "Central (sospecha)",
-  cardiogenic_suspected: "Cardiogénico (sospecha)",
-  undetermined: "Indeterminado",
-};
-
-const URGENCY_LABELS: Record<string, string> = {
-  inmediata: "Inmediata",
-  prioritaria: "Prioritaria",
-  ambulatoria: "Ambulatoria",
-};
-
-function PipelineResultPanel({ result }: { result: PipelineResult }) {
-  const safetyActive =
-    result.red_flag.red_flag_activa && result.urgency === "inmediata";
-
-  return (
-    <div className="result-panel">
-      <div style={{ marginBottom: "1rem" }}>
-        <span className={`urgency-badge ${result.urgency}`}>
-          {URGENCY_LABELS[result.urgency] ?? result.urgency}
-        </span>
-      </div>
-
-      {safetyActive && (
-        <div className="safety-banner">
-          <h3>Riel de seguridad activo</h3>
-          <p>
-            Red flag activa — el guardián determinista fuerza la acción de
-            seguridad independientemente del ML/LLM.
-          </p>
-        </div>
-      )}
-
-      <div className="result-section">
-        <h4>Diagnóstico diferencial</h4>
-        <ul className="candidate-list">
-          {result.differential.candidates.map((c) => (
-            <li key={c.diagnosis} className="candidate-item">
-              <span className="candidate-name">
-                {DIAGNOSIS_LABELS[c.diagnosis] ?? c.diagnosis}
-              </span>
-              <div className="candidate-bar">
-                <div
-                  className="candidate-bar-fill"
-                  style={{ width: `${(c.score * 100).toFixed(0)}%` }}
-                />
-              </div>
-              <span className="candidate-score">
-                {(c.score * 100).toFixed(0)}%
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {result.reasoning && (
-        <div className="result-section">
-          <h4>Razonamiento clínico</h4>
-          <div className="reasoning-block">
-            <p>{result.reasoning.explanation}</p>
-            {result.reasoning.reconciliation && (
-              <p>
-                <strong>Conciliación:</strong> {result.reasoning.reconciliation}
-              </p>
-            )}
-            <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-              Modelo: {result.reasoning.model_used}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {result.fhir_bundle && (
-        <div className="result-section">
-          <h4>Artefacto auditable (FHIR)</h4>
-          <details>
-            <summary>Ver bundle FHIR</summary>
-            <pre style={{ maxHeight: 300, overflow: "auto", fontSize: "0.75rem" }}>
-              {JSON.stringify(result.fhir_bundle, null, 2)}
-            </pre>
-          </details>
-        </div>
       )}
     </div>
   );

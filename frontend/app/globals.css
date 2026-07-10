@@ -703,3 +703,335 @@ body {
   font-size: 1.1rem;
   margin: 0 0 0.75rem;
 }
+
+.evaluate-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.kill-clause-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kill-clause-toggle input[type="checkbox"] {
+  accent-color: var(--color-danger);
+  width: 16px;
+  height: 16px;
+}
+
+.kill-clause-info {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: #664d03;
+  margin-bottom: 1rem;
+}
+
+.clinical-receipt {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.receipt-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  color: var(--color-text);
+}
+
+.receipt-section {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.receipt-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.receipt-section h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--color-primary);
+}
+
+.receipt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.receipt-label {
+  font-weight: 500;
+  min-width: 140px;
+  color: var(--color-text-muted);
+}
+
+.hash-display {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  background: var(--color-bg);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.receipt-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hash-status {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.hash-ok {
+  color: var(--color-success);
+}
+
+.hash-fail {
+  color: var(--color-danger);
+}
+
+.hash-info {
+  color: var(--color-text-muted);
+}
+
+.reasoner-degraded {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.receipt-note {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.receipt-textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  margin-bottom: 0.5rem;
+}
+
+.btn-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-success);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.btn-accept:hover:not(:disabled) {
+  background: #157347;
+}
+
+.btn-accept:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-danger);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.btn-reject:hover:not(:disabled) {
+  background: #bb2d3b;
+}
+
+.btn-reject:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.receipt-decision-recorded {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.privacy-egress-meter {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.egress-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--color-primary);
+}
+
+.egress-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.egress-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.egress-label {
+  font-weight: 500;
+  color: var(--color-text-muted);
+  min-width: 220px;
+}
+
+.egress-value {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.85rem;
+}
+
+.egress-zero {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.egress-note {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin: 0.5rem 0 0;
+  font-style: italic;
+}
+
+.fork-section {
+  margin-top: 1rem;
+}
+
+.fork-display {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-top: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.fork-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.fork-changed {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0 0 1rem;
+}
+
+.fork-grid {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.fork-card {
+  flex: 1;
+  min-width: 200px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.fork-card h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+.fork-escalated {
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.fork-arrow {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.fork-flag {
+  font-size: 0.85rem;
+  color: var(--color-danger);
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.fork-rails {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}
+
+.fork-top {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.fork-urgency-jump {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  color: #58151c;
+  font-weight: 500;
+}
