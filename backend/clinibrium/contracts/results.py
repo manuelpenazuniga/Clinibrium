@@ -57,6 +57,7 @@ class ReasonerOutput(BaseModel):
     suggested_next_steps: list[str] = []
     model_used: str
     reasoner_suggested_urgency: Urgency | None = None  # AD-11: estructurada (enum), no texto
+    grounding_refs: list[str] = []  # AD-10: source_ids ICVD chunks (provenance para FHIR/frontend)
 
 
 class PipelineResult(BaseModel):
