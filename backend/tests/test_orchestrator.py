@@ -577,3 +577,30 @@ def test_audit_event_frozen_from_build():
 
     with pytest.raises(Exception):
         event.urgency = Urgency.inmediata  # type: ignore[misc]
+
+
+async def test_exactly_one_audit_event_when_exception_after_emit(monkeypatch):
+    """INV-4 (fix auditoría Gemini): si algo falla DESPUÉS del emit exitoso
+    del paso 8 (p.ej. model_copy), el flag `audited` previene un SEGUNDO
+    AuditEvent de error. Debe quedar exactamente 1 (el exitoso)."""
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
+    events = _capture_audit(monkeypatch)
+
+    # model_copy selectivo: revienta SOLO en la llamada post-emit (la que trae
+    # audit_event_id en el update); deja pasar cualquier otro model_copy.
+    real_model_copy = PipelineResult.model_copy
+
+    def _selective_boom(self, *args, update=None, **kwargs):  # type: ignore[no-untyped-def]
+        if update and "audit_event_id" in update:
+            raise RuntimeError("post-emit boom")
+        return real_model_copy(self, *args, update=update, **kwargs)
+
+    monkeypatch.setattr(PipelineResult, "model_copy", _selective_boom)
+
+    with pytest.raises(RuntimeError, match="post-emit boom"):
+        await evaluate(_bppv_benign(), grounding=InlineGrounding(), now=FIXED_DT)
+
+    # Exactamente 1 AuditEvent (el exitoso "evaluation"), NO un 2º de error.
+    assert len(events) == 1
+    assert events[0].outcome == "evaluation"

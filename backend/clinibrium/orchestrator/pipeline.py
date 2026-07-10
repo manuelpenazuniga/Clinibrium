@@ -113,8 +113,11 @@ async def evaluate(
             outcome="evaluation",
             occurred_at=occurred_at,
         )
-        sealed = sealed.model_copy(update={"audit_event_id": event.id})
+        # INV-4: el AuditEvent YA se emitió. Marcá `audited` ANTES de cualquier
+        # otra operación (model_copy) para que un fallo posterior NO gatille un
+        # segundo emit en el except (evita el doble-AuditEvent).
         audited = True
+        sealed = sealed.model_copy(update={"audit_event_id": event.id})
         return sealed
 
     except Exception:
