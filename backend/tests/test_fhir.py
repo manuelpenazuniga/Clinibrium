@@ -715,3 +715,49 @@ class TestBundleIntegrity:
         b1 = to_bundle(result, features, audit)
         b2 = to_bundle(result, features, audit)
         assert bundle_sha256(b1) == bundle_sha256(b2)
+
+    def test_canonical_coincide_con_json_stringify_de_js(self) -> None:
+        """El canónico debe ser byte-idéntico al ``JSON.stringify`` de JS.
+
+        Es la propiedad que hace que el botón "Verificar" del frontend
+        recompute el MISMO hash (✓ íntegro). El punto frágil: un float
+        entero (``5.0``) — Python lo emitiría ``"5.0"`` y JS ``"5"``.
+        Replicamos aquí el ``jsonCanonical`` del cliente y exigimos match.
+        """
+        import hashlib
+        import json
+
+        from clinibrium.fhir.mapping import _canonical_json, bundle_sha256
+
+        # _js_number: float entero sin ".0"; fraccionario como shortest-repr.
+        assert _canonical_json(5.0) == "5"
+        assert _canonical_json(5.5) == "5.5"
+        assert _canonical_json({"b": 1, "a": 2.0}) == '{"a":2,"b":1}'
+
+        def js_canonical(obj: object) -> str:
+            # Réplica exacta de jsonCanonical (ClinicalCaseReceipt.tsx):
+            # números vía la representación de JS (enteros sin ".0").
+            if obj is None or not isinstance(obj, (dict, list)):
+                if isinstance(obj, bool):
+                    return "true" if obj else "false"
+                if isinstance(obj, float) and obj.is_integer():
+                    return str(int(obj))
+                return json.dumps(obj, ensure_ascii=False)
+            if isinstance(obj, list):
+                return "[" + ",".join(js_canonical(v) for v in obj) + "]"
+            keys = sorted(obj.keys())
+            return (
+                "{"
+                + ",".join(
+                    json.dumps(k, ensure_ascii=False) + ":" + js_canonical(obj[k])
+                    for k in keys
+                )
+                + "}"
+            )
+
+        # Bundle con un float entero (nystagmus_latency_s=5.0 en el preset).
+        bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
+        client_hash = hashlib.sha256(
+            js_canonical(bundle).encode("utf-8")
+        ).hexdigest()
+        assert client_hash == bundle_sha256(bundle)

@@ -978,14 +978,67 @@ def to_bundle(
     )
 
 
+def _js_number(n: float) -> str:
+    """Formatea un número igual que el ``JSON.stringify`` de ECMAScript.
+
+    Necesario para que el frontend (que recomputa el hash con
+    ``JSON.stringify``) obtenga BYTES idénticos. La diferencia clave con
+    ``json.dumps`` de Python: un float entero (``5.0``) lo emite JS como
+    ``"5"`` (no ``"5.0"``), y ``NaN``/``Infinity`` como ``null``.
+    """
+    if n != n or n in (float("inf"), float("-inf")):  # NaN / ±Inf → null (JS)
+        return "null"
+    if n == int(n) and abs(n) < 1e21:
+        return str(int(n))
+    # Para valores fraccionarios, ``repr`` de Python coincide con el
+    # shortest-round-trip de ECMAScript en el rango de la demo.
+    return repr(n)
+
+
+def _canonical_json(obj: Any) -> str:
+    """JSON canónico byte-idéntico al de ``jsonCanonical`` del frontend.
+
+    Reglas (RFC 8785 / JCS, subset usado por el bundle):
+      - claves de objeto ordenadas (Unicode code point == UTF-16 para ASCII);
+      - sin espacios entre tokens;
+      - strings con el mismo escape que ``JSON.stringify`` (== ``json.dumps``
+        con ``ensure_ascii=False``);
+      - números con formato ECMAScript (ver ``_js_number``).
+    """
+    if obj is None:
+        return "null"
+    if obj is True:
+        return "true"
+    if obj is False:
+        return "false"
+    if isinstance(obj, str):
+        return _json.dumps(obj, ensure_ascii=False)
+    if isinstance(obj, bool):  # (ya cubierto arriba, defensa)
+        return "true" if obj else "false"
+    if isinstance(obj, int):
+        return str(obj)
+    if isinstance(obj, float):
+        return _js_number(obj)
+    if isinstance(obj, (list, tuple)):
+        return "[" + ",".join(_canonical_json(v) for v in obj) + "]"
+    if isinstance(obj, dict):
+        parts = [
+            _json.dumps(str(k), ensure_ascii=False) + ":" + _canonical_json(v)
+            for k, v in sorted(obj.items(), key=lambda kv: str(kv[0]))
+        ]
+        return "{" + ",".join(parts) + "}"
+    # Fallback (p.ej. datetime que no fue serializado aguas arriba).
+    return _json.dumps(str(obj), ensure_ascii=False)
+
+
 def bundle_sha256(bundle: dict[str, Any]) -> str:
     """SHA-256 hex del JSON canónico del Bundle (tamper-evident).
 
     Mismo bundle → mismo hash; alteración → hash distinto.
-    El frontend puede recomputar el hash del bundle recibido
-    y compararlo con este valor para verificar integridad.
+    El frontend recomputa el hash del bundle recibido con la MISMA
+    canonicalización (claves ordenadas, sin espacios, números formato
+    ECMAScript) y lo compara con este valor para verificar integridad
+    de forma independiente (✓ íntegro / ✗ alterado).
     """
-    canonical = _json.dumps(
-        bundle, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    canonical = _canonical_json(bundle)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
