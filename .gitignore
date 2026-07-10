@@ -20,3 +20,7 @@ node_modules/
 # Next.js
 next-env.d.ts
 *.tsbuildinfo
+
+# Audit log local (fallback JSONL append-only; runtime)
+audit_events.jsonl
+*.jsonl
