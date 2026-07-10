@@ -1,4 +1,5 @@
 import PipelineDemo from "./components/PipelineDemo";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -9,6 +10,11 @@ export default function Home() {
         <div className="disclaimer">
           El médico decide — apoyo diagnóstico, no diagnóstico autónomo.
         </div>
+        <nav style={{ marginTop: "1rem" }}>
+          <Link href="/dix-hallpike" className="btn-secondary">
+            Dix-Hallpike (Tier 1)
+          </Link>
+        </nav>
       </header>
       <PipelineDemo />
     </main>
