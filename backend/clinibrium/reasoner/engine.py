@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from textwrap import dedent
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
@@ -128,7 +128,12 @@ async def reason(
         api_key = get_settings().ANTHROPIC_API_KEY
         client = AsyncAnthropic(api_key=api_key)
 
-    thinking: dict | None = {"type": "adaptive"} if model == OPUS else None
+    # `thinking` solo aplica a Opus 4.8 (adaptive). Para Haiku 4.5 se OMITE
+    # el parámetro por completo — pasar `thinking=None` explícito lo rechaza
+    # la API con 400 ("thinking: Input should be an object").
+    extra_kwargs: dict[str, Any] = {}
+    if model == OPUS:
+        extra_kwargs["thinking"] = {"type": "adaptive"}
 
     for attempt in range(1 + MAX_RETRIES):
         try:
@@ -136,10 +141,10 @@ async def reason(
                 resp = await client.messages.parse(
                     model=model,
                     max_tokens=1200,
-                    thinking=thinking,  # type: ignore[arg-type]
                     messages=messages,  # type: ignore[arg-type]
                     system=system_prompt,
                     output_format=_LLMReasoning,
+                    **extra_kwargs,
                 )
             parsed = resp.parsed_output
             if parsed is None:

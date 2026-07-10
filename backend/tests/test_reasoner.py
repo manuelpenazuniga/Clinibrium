@@ -305,6 +305,10 @@ async def test_reason_happy_path_returns_reasoner_output() -> None:
     assert out.model_used == HAIKU
     assert out.reasoner_suggested_urgency == Urgency.ambulatoria
     assert out.grounding_refs == [c.source_id for c in chunks]
+    # Haiku 4.5 NO usa `thinking`: el parámetro debe OMITIRSE (no None).
+    # Pasar `thinking=None` explícito lo rechaza la API con 400
+    # ("thinking: Input should be an object").
+    assert "thinking" not in mock_client.messages.parse.call_args.kwargs
 
 
 async def test_reason_happy_path_uses_opus_with_red_flag() -> None:
@@ -327,6 +331,11 @@ async def test_reason_happy_path_uses_opus_with_red_flag() -> None:
 
     assert out is not None
     assert out.model_used == OPUS
+    # Opus 4.8 SÍ usa thinking adaptive (obligatorio {"type": "adaptive"};
+    # `budget_tokens` está deprecado y sería rechazado con 400).
+    assert mock_client.messages.parse.call_args.kwargs.get("thinking") == {
+        "type": "adaptive"
+    }
 
 
 async def test_reason_includes_ml_when_provided() -> None:
