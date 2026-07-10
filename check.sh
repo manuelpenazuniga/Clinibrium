@@ -55,6 +55,10 @@ step "frontend: lint"
 npm run -s lint
 ok "next lint"
 
+step "frontend: unit tests (vitest)"
+npm run -s test
+ok "vitest"
+
 step "frontend: build"
 npm run -s build
 ok "next build"
