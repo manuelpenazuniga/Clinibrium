@@ -64,6 +64,7 @@ def _a1_avs_central_hints(f: CaseFeatures) -> bool:
     return _avs(f) and (
         f.head_impulse == HeadImpulse.normal
         or f.nystagmus_direction_changing_gaze
+        or f.nystagmus_direction == NystagmusDirection.direction_changing
         or f.skew_deviation
     )
 
@@ -104,6 +105,22 @@ def _a7_avs_age_vascular_risk(f: CaseFeatures) -> bool:
 
 def _a8_sudden_unilateral_hearing_loss_with_avs(f: CaseFeatures) -> bool:
     return f.hearing_loss == HearingLoss.sudden_unilateral and _avs(f)
+
+
+# TODO(clinical): regla defensiva agregada tras auditoría; confirmar con
+# especialista. Cubre meningitis afébril, trombosis basilar, hemorragia
+# cerebelosa y herniación — un falso negativo aquí no es tolerable.
+def _a9_altered_consciousness(f: CaseFeatures) -> bool:
+    return f.altered_consciousness
+
+
+# TODO(clinical): confirmar con especialista. `nystagmus_suppressed_by_fixation`
+# es bool|None; usamos `is False` para NO disparar con valor desconocido (None).
+def _a10_nystagmus_not_suppressed_in_avs(f: CaseFeatures) -> bool:
+    return (
+        _avs(f)
+        and f.nystagmus_suppressed_by_fixation is False
+    )
 
 
 def _b1_sudden_unilateral_hearing_loss(f: CaseFeatures) -> bool:
@@ -202,8 +219,22 @@ RULES: list[RedFlagRule] = [
         id="A8",
         label="Hipoacusia súbita unilateral + vértigo agudo (AICA)",
         severity="high",
-        forced_actions=(ForcedAction.DERIVAR_URGENTE,),
+        forced_actions=(ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE),
         predicate=_a8_sudden_unilateral_hearing_loss_with_avs,
+    ),
+    RedFlagRule(
+        id="A9",
+        label="Compromiso de conciencia con vértigo agudo",
+        severity="high",
+        forced_actions=(ForcedAction.DERIVAR_URGENTE,),
+        predicate=_a9_altered_consciousness,
+    ),
+    RedFlagRule(
+        id="A10",
+        label="Nistagmo no suprimido por fijación en AVS",
+        severity="high",
+        forced_actions=(ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE),
+        predicate=_a10_nystagmus_not_suppressed_in_avs,
     ),
     # --- Bloque B: otras urgencias ---
     RedFlagRule(

@@ -97,6 +97,37 @@ def test_a1_avs_central_hints() -> None:
     assert r.red_flag_activa is True
 
 
+def test_a1_fires_with_skew_deviation_alone() -> None:
+    """Auditoría fix #2: A1 también dispara por skew_deviation aislada en AVS."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        skew_deviation=True,
+    )
+    r = evaluate(f)
+    h = _hit(r, "A1")
+    assert h.severity == "high"
+    assert ForcedAction.NO_BENIGNO in h.forced_actions
+    assert ForcedAction.DERIVAR_URGENTE in h.forced_actions
+    assert r.red_flag_activa is True
+
+
+def test_a1_fires_with_nystagmus_direction_changing_enum() -> None:
+    """Auditoría fix #2: A1 también dispara cuando el nistagmo cambiante viene
+    por el enum (no por el bool). A3 también dispara por diseño; el test
+    sólo exige que A1 esté con NO_BENIGNO + DERIVAR_URGENTE."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        nystagmus_direction=NystagmusDirection.direction_changing,
+    )
+    r = evaluate(f)
+    h = _hit(r, "A1")
+    assert h.severity == "high"
+    assert set(h.forced_actions) == {ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE}
+    assert r.red_flag_activa is True
+    # A3 también dispara por la misma razón — verificamos que ambas estén
+    assert any(h.id == "A3" for h in r.hits)
+
+
 def test_a2_pure_vertical_or_torsional_nystagmus() -> None:
     f = CaseFeatures(nystagmus_direction=NystagmusDirection.vertical_pure)
     r = evaluate(f)
@@ -212,8 +243,94 @@ def test_a8_sudden_unilateral_hearing_loss_with_avs() -> None:
     r = evaluate(f)
     h = _hit(r, "A8")
     assert h.severity == "high"
+    assert set(h.forced_actions) == {ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE}
+    assert r.red_flag_activa is True
+
+
+def test_a8_includes_no_benigno_in_forced_actions() -> None:
+    """Auditoría fix #4: A8 (AICA) NO es benigna — incluye NO_BENIGNO."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        hearing_loss=HearingLoss.sudden_unilateral,
+    )
+    r = evaluate(f)
+    h = _hit(r, "A8")
+    assert ForcedAction.NO_BENIGNO in h.forced_actions
+    assert ForcedAction.NO_BENIGNO in r.forced_actions
+
+
+def test_a9_altered_consciousness_afebrile() -> None:
+    """Auditoría fix #1 [CRÍTICO]: altered_consciousness sin fiebre dispara A9
+    (p.ej. meningitis afébril, trombosis basilar, herniación)."""
+    f = CaseFeatures(altered_consciousness=True, fever=False)
+    r = evaluate(f)
+    h = _hit(r, "A9")
+    assert h.label == "Compromiso de conciencia con vértigo agudo"
+    assert h.severity == "high"
     assert h.forced_actions == [ForcedAction.DERIVAR_URGENTE]
     assert r.red_flag_activa is True
+    # B2 NO debe disparar (no hay fiebre)
+    assert all(h.id != "B2" for h in r.hits)
+
+
+def test_a9_fires_alongside_b2_when_fever_and_altered_consciousness() -> None:
+    """A9 y B2 son reglas independientes: ambas disparan si hay fiebre Y
+    alteración de conciencia (cobertura redundante a propósito)."""
+    f = CaseFeatures(fever=True, altered_consciousness=True)
+    r = evaluate(f)
+    assert any(h.id == "A9" for h in r.hits)
+    assert any(h.id == "B2" for h in r.hits)
+    assert r.red_flag_activa is True
+
+
+def test_a9_does_not_fire_when_consciousness_intact() -> None:
+    f = CaseFeatures(altered_consciousness=False)
+    r = evaluate(f)
+    assert all(h.id != "A9" for h in r.hits)
+
+
+def test_a10_nystagmus_not_suppressed_in_avs() -> None:
+    """Auditoría fix #3: nistagmo NO suprimido por fijación en AVS es signo
+    central. Dispara solo con `False` explícito, no con `None`."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        nystagmus_suppressed_by_fixation=False,
+    )
+    r = evaluate(f)
+    h = _hit(r, "A10")
+    assert h.severity == "high"
+    assert set(h.forced_actions) == {ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE}
+    assert r.red_flag_activa is True
+
+
+def test_a10_does_not_fire_when_suppressed_by_fixation_is_none() -> None:
+    """A10 NO dispara con valor desconocido (None): solo False explícito."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        nystagmus_suppressed_by_fixation=None,
+    )
+    r = evaluate(f)
+    assert all(h.id != "A10" for h in r.hits)
+
+
+def test_a10_does_not_fire_when_suppressed_is_true() -> None:
+    """Nistagmo suprimido por fijación = signo periférico. A10 NO dispara."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.acute_continuous,
+        nystagmus_suppressed_by_fixation=True,
+    )
+    r = evaluate(f)
+    assert all(h.id != "A10" for h in r.hits)
+
+
+def test_a10_does_not_fire_outside_avs() -> None:
+    """A10 requiere AVS — fuera de AVS el campo no implica centralidad."""
+    f = CaseFeatures(
+        timing_pattern=TimingPattern.episodic_triggered,
+        nystagmus_suppressed_by_fixation=False,
+    )
+    r = evaluate(f)
+    assert all(h.id != "A10" for h in r.hits)
 
 
 def test_b1_sudden_unilateral_hearing_loss_isolated() -> None:
@@ -253,6 +370,26 @@ def test_b3_cardiogenic_pattern_escalates_only() -> None:
     assert h.forced_actions == [ForcedAction.ESCALAR]
     assert r.red_flag_activa is False
     assert ForcedAction.ESCALAR in r.forced_actions
+
+
+def test_b3_fires_with_chest_pain_alone() -> None:
+    """Auditoría fix #5: B3 dispara con chest_pain aislado."""
+    f = CaseFeatures(chest_pain=True)
+    r = evaluate(f)
+    h = _hit(r, "B3")
+    assert h.severity == "medium"
+    assert h.forced_actions == [ForcedAction.ESCALAR]
+    assert r.red_flag_activa is False
+
+
+def test_b3_fires_with_palpitations_alone() -> None:
+    """Auditoría fix #5: B3 dispara con palpitations aislado."""
+    f = CaseFeatures(palpitations=True)
+    r = evaluate(f)
+    h = _hit(r, "B3")
+    assert h.severity == "medium"
+    assert h.forced_actions == [ForcedAction.ESCALAR]
+    assert r.red_flag_activa is False
 
 
 def test_b4_otitis_or_mastoiditis() -> None:
@@ -454,8 +591,9 @@ def test_redflag_engine_only_imports_from_contracts_and_self() -> None:
 
 
 def test_rules_table_covers_all_documented_ids() -> None:
-    """La tabla contiene exactamente los IDs documentados en la spec T4."""
-    expected = {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8",
+    """La tabla contiene exactamente los IDs documentados en la spec T4
+    y en la auditoría de correctness (A9, A10)."""
+    expected = {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10",
                 "B1", "B2", "B3", "B4", "B5",
                 "C1", "C2", "C3",
                 "E4"}
