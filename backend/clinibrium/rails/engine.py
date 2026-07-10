@@ -29,7 +29,12 @@ _RailResult = tuple[set[ForcedAction], str | None]
 def _rail_inv1(result: PipelineResult, _features: CaseFeatures) -> _RailResult:
     """R-INV1: red flag gana — urgencia inmediata, propaga forced_actions."""
     if result.red_flag.red_flag_activa:
-        return set(result.red_flag.forced_actions), "R-INV1"
+        actions = set(result.red_flag.forced_actions)
+        # red_flag_activa ⇒ derivación urgente forzada por definición del RedFlagEngine.
+        # Lo re-aseguramos acá (defensivo + trazabilidad INV-7): R-INV1 siempre queda
+        # registrado y DERIVAR_URGENTE presente aunque forced_actions viniera vacío.
+        actions.add(ForcedAction.DERIVAR_URGENTE)
+        return actions, "R-INV1"
     return set(), None
 
 
@@ -40,7 +45,14 @@ def _rail_epley_d(
     actions: set[ForcedAction] = set()
 
     red_flag_activa = result.red_flag.red_flag_activa
-    precaucion_presente = ForcedAction.PRECAUCION_EXAMEN in accumulated_forced
+    # Chequeo directo de contraindicaciones de examen (defensivo): no dependemos solo
+    # de que RedFlagEngine ya haya propagado PRECAUCION_EXAMEN en accumulated_forced.
+    precaucion_presente = (
+        ForcedAction.PRECAUCION_EXAMEN in accumulated_forced
+        or features.cervical_pathology
+        or features.known_carotid_vertebrobasilar_disease
+        or features.cardiovascular_instability
+    )
 
     top_candidate = (
         result.differential.candidates[0] if result.differential.candidates else None
@@ -63,10 +75,15 @@ def _rail_epley_d(
         and features.nystagmus_duration_s > 60
     )
     nystagmus_not_fatigable = features.nystagmus_fatigable is False
-    nystagmus_atypical_dir = features.nystagmus_direction in {
-        NystagmusDirection.vertical_pure,
-        NystagmusDirection.torsional_pure,
-    }
+    nystagmus_atypical_dir = (
+        features.nystagmus_direction
+        in {
+            NystagmusDirection.vertical_pure,
+            NystagmusDirection.torsional_pure,
+            NystagmusDirection.direction_changing,  # signo central: bloquear Epley
+        }
+        or features.nystagmus_direction_changing_gaze
+    )
     atypical_nystagmus = (
         nystagmus_duration_long or nystagmus_not_fatigable or nystagmus_atypical_dir
     )
@@ -74,7 +91,7 @@ def _rail_epley_d(
     bloque_epley = (
         red_flag_activa
         or precaucion_presente
-        or (top_candidate is not None and not top_is_bppv_posterior)
+        or (top_candidate is None or not top_is_bppv_posterior)
         or top_score_low
         or atypical_nystagmus
     )

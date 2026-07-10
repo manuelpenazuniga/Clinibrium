@@ -281,13 +281,13 @@ class TestRailEpleyD:
         actions, rail_id = _rail_epley_d(result, features, set())
         assert rail_id is None
 
-    def test_empty_differential_no_top_candidate(self) -> None:
-        """Sin candidatos no hay top, pero el riel no falla (R-E2 cubre el vacío)."""
+    def test_empty_differential_blocks_epley(self) -> None:
+        """Fix auditoría (D1): sin candidatos NO hay BPPV confiable ⇒ BLOQUEAR_EPLEY.
+        (Antes se dejaba pasar — falso negativo detectado por auditoría Gemini.)"""
         result = _make_result(red_flag_activa=False, candidates=[])
         actions, rail_id = _rail_epley_d(result, _make_features(), set())
-        # Ni bloquea ni escala — no hay top candidate que evaluar
-        assert actions == set()
-        assert rail_id is None
+        assert ForcedAction.BLOQUEAR_EPLEY in actions
+        assert rail_id == "R-EPLEY-D"
 
 
 class TestRailE2:
@@ -956,3 +956,61 @@ def test_urgency_rank_has_three_entries() -> None:
     assert len(_URGENCY_RANK) == 3
     for u in Urgency:
         assert u in _URGENCY_RANK
+
+
+# ---------------------------------------------------------------------------
+# Fixes de auditoría Gemini T8 (Bloque D más conservador + trazabilidad R-INV1)
+# ---------------------------------------------------------------------------
+class TestAuditFixesT8:
+    def test_rinv1_traceable_even_if_forced_actions_empty(self) -> None:
+        """Fix trazabilidad: red_flag_activa con forced_actions vacío igual
+        registra R-INV1 y garantiza DERIVAR_URGENTE + urgencia inmediata."""
+        result = _make_result(red_flag_activa=True, red_flag_actions=set())
+        sealed = apply_rails(result, _make_features())
+        assert sealed.urgency == Urgency.inmediata
+        assert "R-INV1" in sealed.applied_rails
+        assert ForcedAction.DERIVAR_URGENTE in sealed.forced_actions
+
+    def test_empty_differential_blocks_epley(self) -> None:
+        """Fix D1: diferencial vacío (sin BPPV confiable) ⇒ BLOQUEAR_EPLEY."""
+        result = _make_result(candidates=[])
+        sealed = apply_rails(result, _make_features())
+        assert ForcedAction.BLOQUEAR_EPLEY in sealed.forced_actions
+
+    def test_cervical_feature_blocks_epley(self) -> None:
+        """Fix D4: contraindicación cervical directa en features ⇒ BLOQUEAR_EPLEY,
+        aunque el top sea un bppv_posterior de score alto."""
+        result = _make_result(
+            candidates=[
+                DifferentialCandidate(diagnosis=Diagnosis.bppv_posterior, score=0.95)
+            ]
+        )
+        sealed = apply_rails(result, _make_features(cervical_pathology=True))
+        assert ForcedAction.BLOQUEAR_EPLEY in sealed.forced_actions
+
+    def test_direction_changing_nystagmus_blocks_epley_and_no_benigno(self) -> None:
+        """Fix D2/central: nistagmo cambiante de dirección ⇒ BLOQUEAR_EPLEY + NO_BENIGNO."""
+        result = _make_result(
+            candidates=[
+                DifferentialCandidate(diagnosis=Diagnosis.bppv_posterior, score=0.95)
+            ]
+        )
+        sealed = apply_rails(
+            result,
+            _make_features(nystagmus_direction=NystagmusDirection.direction_changing),
+        )
+        assert ForcedAction.BLOQUEAR_EPLEY in sealed.forced_actions
+        assert ForcedAction.NO_BENIGNO in sealed.forced_actions
+
+    def test_direction_changing_gaze_bool_blocks_epley(self) -> None:
+        """Fix central: el bool nystagmus_direction_changing_gaze también cuenta como atípico."""
+        result = _make_result(
+            candidates=[
+                DifferentialCandidate(diagnosis=Diagnosis.bppv_posterior, score=0.95)
+            ]
+        )
+        sealed = apply_rails(
+            result, _make_features(nystagmus_direction_changing_gaze=True)
+        )
+        assert ForcedAction.BLOQUEAR_EPLEY in sealed.forced_actions
+        assert ForcedAction.NO_BENIGNO in sealed.forced_actions
