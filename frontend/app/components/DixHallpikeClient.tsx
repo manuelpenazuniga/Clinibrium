@@ -414,7 +414,10 @@ export default function DixHallpikeClient() {
       timing_pattern: "episodic_triggered",
       duration: "under_1min",
       onset: "sudden",
-      torsion_confirmed_by_clinician: torsion !== "",
+      // Solo se confirma torsión si el médico observó una dirección concreta.
+      // "none" (no observada) y "" (sin responder) => NO confirmada (fix audit P0.1).
+      torsion_confirmed_by_clinician:
+        torsion === "right_ear" || torsion === "left_ear",
       nystagmus_latency_s: nystagmusFeatures.nystagmus_latency_s ?? undefined,
       nystagmus_duration_s: nystagmusFeatures.nystagmus_duration_s ?? undefined,
       nystagmus_fatigable: nystagmusFeatures.nystagmus_fatigable ?? undefined,
@@ -650,11 +653,11 @@ export default function DixHallpikeClient() {
               <span className="dh-metric-value">{fps.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Vel. H (°/s)</span>
+              <span className="dh-metric-label">Vel. H (rel.)</span>
               <span className="dh-metric-value">{velH.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Vel. V (°/s)</span>
+              <span className="dh-metric-label">Vel. V (rel.)</span>
               <span className="dh-metric-value">{velV.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
@@ -682,6 +685,12 @@ export default function DixHallpikeClient() {
               <span className="dh-metric-value">{fatigable}</span>
             </div>
           </div>
+
+          <p className="dh-experimental-note">
+            Tracking experimental on-device. Las velocidades son relativas (sin
+            calibración a °/s validada); no es un instrumento de medición clínica
+            certificado. El médico confirma el patrón observado.
+          </p>
 
           <div className="dh-confirm-section">
             <h3>Confirmación del médico (obligatoria)</h3>
