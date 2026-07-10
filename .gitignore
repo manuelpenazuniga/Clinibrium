@@ -4,8 +4,11 @@
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 .env
+backend/.venv/
+backend/.env
 
 # Node
 node_modules/
@@ -13,3 +16,7 @@ node_modules/
 
 # Bus de consultas al arquitecto (transitorio)
 .agents/
+
+# Next.js
+next-env.d.ts
+*.tsbuildinfo
