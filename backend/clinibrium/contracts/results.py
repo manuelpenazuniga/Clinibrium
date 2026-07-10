@@ -56,6 +56,7 @@ class ReasonerOutput(BaseModel):
     reconciliation: str
     suggested_next_steps: list[str] = []
     model_used: str
+    reasoner_suggested_urgency: Urgency | None = None  # AD-11: estructurada (enum), no texto
 
 
 class PipelineResult(BaseModel):

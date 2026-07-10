@@ -236,6 +236,18 @@ def test_reasoner_output_minimal() -> None:
     )
     assert r.suggested_next_steps == []
     assert r.model_used == "claude-opus-4-8"
+    assert r.reasoner_suggested_urgency is None
+
+
+def test_reasoner_output_with_suggested_urgency() -> None:
+    """AD-11: `reasoner_suggested_urgency` es un enum Urgency estructurado."""
+    r = ReasonerOutput(
+        explanation="Caso dudoso.",
+        reconciliation="Las features no cuadran con VPPB típico.",
+        model_used="claude-opus-4-8",
+        reasoner_suggested_urgency=Urgency.inmediata,
+    )
+    assert r.reasoner_suggested_urgency == Urgency.inmediata
 
 
 def test_pipeline_result_minimal() -> None:
