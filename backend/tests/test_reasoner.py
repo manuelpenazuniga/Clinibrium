@@ -43,21 +43,19 @@ from clinibrium.reasoner.engine import _LLMReasoning
 
 
 def test_privacy_rejects_field_outside_allowlist() -> None:
-    original = CaseFeatures()
-    payload = original.model_dump(mode="json")
-    payload["patient_name"] = "Juan Pérez"
-    # Manually validate: the function should reject extra keys
-    extra = set(payload.keys()) - NETWORK_SAFE_FIELDS
-    assert extra == {"patient_name"}
+    """Ejercita el build_network_payload REAL (no un helper duplicado): un
+    features cuyo model_dump filtra una clave de PII debe LEVANTAR."""
+
+    class _LeakyFeatures:
+        """Stub que inyecta una clave fuera del allowlist en el dump."""
+
+        def model_dump(self, mode: str = "json") -> dict:
+            payload = CaseFeatures().model_dump(mode="json")
+            payload["patient_name"] = "Juan Pérez"
+            return payload
+
     with pytest.raises(PrivacyViolation):
-        _reject_extra_for_test(payload)
-
-
-def _reject_extra_for_test(payload: dict) -> None:
-    """Versión inyectable para test: misma lógica que build_network_payload."""
-    extra = set(payload.keys()) - NETWORK_SAFE_FIELDS
-    if extra:
-        raise PrivacyViolation(f"Campos fuera del allowlist: {extra}")
+        build_network_payload(_LeakyFeatures())  # type: ignore[arg-type]
 
 
 def test_privacy_allows_only_safe_fields() -> None:

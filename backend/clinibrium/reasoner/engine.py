@@ -165,21 +165,16 @@ async def reason(
             else:
                 logger.exception("Reasoner rate limited after %d retries", MAX_RETRIES)
         except (APIConnectionError, APIStatusError, asyncio.TimeoutError) as e:
-            is_server_error = isinstance(e, APIStatusError) and e.status_code >= 500
-            if is_server_error and attempt < MAX_RETRIES:
+            # Reintentable: conexión, timeout, o 5xx del servidor. Un 4xx de
+            # cliente (400 bad request, etc.) NO mejora reintentando → break.
+            retryable = isinstance(e, (APIConnectionError, asyncio.TimeoutError)) or (
+                isinstance(e, APIStatusError) and e.status_code >= 500
+            )
+            if retryable and attempt < MAX_RETRIES:
                 delay = RETRY_BACKOFF_S[attempt]
                 logger.warning(
-                    "Reasoner server error %s (attempt %d/%d), retrying in %.1fs",
-                    e.status_code if isinstance(e, APIStatusError) else "connection",
-                    attempt + 1,
-                    1 + MAX_RETRIES,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-            elif isinstance(e, asyncio.TimeoutError) and attempt < MAX_RETRIES:
-                delay = RETRY_BACKOFF_S[attempt]
-                logger.warning(
-                    "Reasoner timeout (attempt %d/%d), retrying in %.1fs",
+                    "Reasoner retryable error %s (attempt %d/%d), retrying in %.1fs",
+                    type(e).__name__,
                     attempt + 1,
                     1 + MAX_RETRIES,
                     delay,
@@ -187,6 +182,7 @@ async def reason(
                 await asyncio.sleep(delay)
             else:
                 logger.exception("Reasoner failed: %s", type(e).__name__)
+                break  # no-reintentable (4xx) o reintentos agotados → degradar ya
         except Exception:
             logger.exception("Reasoner unexpected error")
             break
