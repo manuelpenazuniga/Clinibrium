@@ -1,1 +1,6 @@
-"""Compone el pipeline completo; único módulo que lo conoce entero."""
+"""Pipeline de evaluación VertigoDx — compone todos los módulos."""
+from __future__ import annotations
+
+from clinibrium.orchestrator.pipeline import evaluate
+
+__all__ = ["evaluate"]

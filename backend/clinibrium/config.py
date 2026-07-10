@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ML_PREDICT_URL: str | None = None
     ML_PREDICT_TIMEOUT_S: float = 2.0
 
+    # Audit persistence — best-effort JSONL fallback cuando Postgres no está.
+    AUDIT_LOG_PATH: str = "./audit_events.jsonl"
+
 
 _settings: Settings | None = None
 

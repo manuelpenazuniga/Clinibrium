@@ -6,6 +6,7 @@ paquete `clinibrium.contracts`.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,3 +26,5 @@ class AuditEvent(BaseModel):
     forced_actions: list[ForcedAction] = []
     red_flag_activa: bool
     outcome_summary: str
+    reasoner_status: Literal["ok", "degraded"] = "ok"  # marcador INV-8
+    outcome: str = "evaluation"
