@@ -286,52 +286,47 @@ export default function PipelineDemo() {
 function StageDetailCard({ label, data }: { label: string; data: unknown }) {
   const renderContent = () => {
     if (label === "RedFlag") {
-      const d = data as RedFlagResult;
+      // Payload observacional del stage: {red_flag_activa, hits_count}.
+      // El detalle de los hits va en el panel de resultado final (done).
+      const d = data as { red_flag_activa: boolean; hits_count: number };
       return (
         <div>
           <strong>Red flag activa:</strong>{" "}
           {d.red_flag_activa ? "SÍ" : "No"}
-          {d.hits.length > 0 && (
-            <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1.25rem" }}>
-              {d.hits.map((h) => (
-                <li key={h.id}>
-                  {h.label} ({h.severity})
-                </li>
-              ))}
-            </ul>
+          {(d.hits_count ?? 0) > 0 && (
+            <span> — {d.hits_count} hallazgo(s) de alarma</span>
           )}
         </div>
       );
     }
     if (label === "Differential") {
-      const d = data as DifferentialResult;
+      // Payload observacional del stage: {top_candidates: [{diagnosis, score, rule_ids}]}.
+      const d = data as {
+        top_candidates?: { diagnosis: string; score: number; rule_ids: string[] }[];
+      };
+      const cands = d.top_candidates ?? [];
       return (
         <div>
-          {d.candidates.length > 0
-            ? d.candidates
+          {cands.length > 0
+            ? cands
                 .slice(0, 3)
-                .map((c) => `${DIAGNOSIS_LABELS[c.diagnosis] ?? c.diagnosis}: ${(c.score * 100).toFixed(0)}%`)
+                .map(
+                  (c) =>
+                    `${DIAGNOSIS_LABELS[c.diagnosis] ?? c.diagnosis}: ${(c.score * 100).toFixed(0)}%`,
+                )
                 .join(" · ")
             : "Sin candidatos"}
         </div>
       );
     }
     if (label === "ML") {
-      const d = data as PredictResponse;
+      // Payload observacional del stage: {available: bool}.
+      const d = data as { available?: boolean };
       return (
         <div>
-          Modelo: {d.model_version}
-          {d.probabilities && (
-            <span>
-              {" "}
-              · Top:{" "}
-              {Object.entries(d.probabilities)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 2)
-                .map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`)
-                .join(", ")}
-            </span>
-          )}
+          {d.available
+            ? "Modelo ML disponible"
+            : "ML no disponible (track B degradado) — el pipeline continúa"}
         </div>
       );
     }
