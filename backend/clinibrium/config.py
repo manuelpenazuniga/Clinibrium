@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://clinibrium:clinibrium@localhost:5432/clinibrium"
     ANTHROPIC_API_KEY: str = ""
 
+    # Track B (ML) — opcional. Si es None, `ml_client.predict()` degrada a
+    # None inmediatamente y el pipeline A sigue funcionando sin B (INV-6).
+    ML_PREDICT_URL: str | None = None
+    ML_PREDICT_TIMEOUT_S: float = 2.0
+
 
 _settings: Settings | None = None
 
