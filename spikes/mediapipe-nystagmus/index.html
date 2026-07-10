@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaPipe Nystagmus Spike</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 20px; color: #4a9eff; }
+    .controls {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button, label {
+      background: #4a9eff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:disabled { background: #555; cursor: not-allowed; }
+    input[type="file"] { display: none; }
+    .video-container {
+      position: relative;
+      display: inline-block;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    video, canvas {
+      display: block;
+      max-width: 640px;
+      height: auto;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .metrics {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .metric {
+      background: #333;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    .metric-label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .metric-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4a9eff;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+    }
+    .status.info { background: #1e3a5f; color: #4a9eff; }
+    .status.error { background: #5f1e1e; color: #ff4a4a; }
+    .status.success { background: #1e5f3a; color: #4aff6a; }
+    #graph {
+      background: #2a2a2a;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MediaPipe Nystagmus Detection Spike</h1>
+    
+    <div id="status" class="status info">Cargando MediaPipe...</div>
+    
+    <div class="controls">
+      <button id="btnWebcam">Iniciar Webcam</button>
+      <label for="fileInput">Cargar Video</label>
+      <input type="file" id="fileInput" accept="video/*">
+      <button id="btnStop" disabled>Detener</button>
+    </div>
+
+    <div class="video-container">
+      <video id="video" playsinline></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <canvas id="graph" width="1200" height="200"></canvas>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">FPS Efectivo</div>
+        <div class="metric-value" id="fps">0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Vel. Horizontal (°/s)</div>
+        <div class="metric-value" id="velH">0.0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Vel. Vertical (°/s)</div>
+        <div class="metric-value" id="velV">0.0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Frecuencia Nistagmo (Hz)</div>
+        <div class="metric-value" id="freq">0.0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Dirección Predominante</div>
+        <div class="metric-value" id="direction">-</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Latencia (s)</div>
+        <div class="metric-value" id="latency">-</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Batidas Detectadas</div>
+        <div class="metric-value" id="beats">0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Fatigabilidad</div>
+        <div class="metric-value" id="fatigue">-</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs";
+
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const graph = document.getElementById('graph');
+    const ctx = overlay.getContext('2d');
+    const graphCtx = graph.getContext('2d');
+    const status = document.getElementById('status');
+
+    let faceLandmarker;
+    let running = false;
+    let startTime = 0;
+    let frameCount = 0;
+    let lastTime = 0;
+    
+    // Iris tracking data
+    const irisHistory = [];
+    const velocityHistory = [];
+    const MAX_HISTORY = 600; // 10 seconds at 60fps
+    
+    // Nystagmus detection
+    let beatTimes = [];
+    let firstBeatTime = null;
+    let amplitudes = [];
+    
+    // Approximate conversion: pixels to degrees (calibrated for typical setup)
+    // This is a rough approximation; real calibration would need known reference
+    const PX_TO_DEG = 0.05; // ~20px per degree
+
+    async function initMediaPipe() {
+      try {
+        const filesetResolver = new FilesetResolver(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+        );
+        
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numFaces: 1,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false
+        });
+        
+        status.textContent = 'MediaPipe cargado. Listo para iniciar.';
+        status.className = 'status success';
+      } catch (err) {
+        status.textContent = `Error cargando MediaPipe: ${err.message}`;
+        status.className = 'status error';
+        console.error(err);
+      }
+    }
+
+    function getIrisCenter(landmarks, indices) {
+      // Iris indices: 468 (left center), 473 (right center)
+      // For more robust center, average the 5 iris points
+      let x = 0, y = 0;
+      for (const idx of indices) {
+        x += landmarks[idx].x;
+        y += landmarks[idx].y;
+      }
+      return { x: x / indices.length, y: y / indices.length };
+    }
+
+    function drawOverlay(landmarks, videoWidth, videoHeight) {
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      
+      // Draw iris landmarks
+      const leftIrisIndices = [468, 469, 470, 471, 472];
+      const rightIrisIndices = [473, 474, 475, 476, 477];
+      
+      ctx.fillStyle = '#00ff00';
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      
+      // Left iris
+      for (const idx of leftIrisIndices) {
+        const lm = landmarks[idx];
+        const x = lm.x * videoWidth;
+        const y = lm.y * videoHeight;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      // Right iris
+      for (const idx of rightIrisIndices) {
+        const lm = landmarks[idx];
+        const x = lm.x * videoWidth;
+        const y = lm.y * videoHeight;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      // Draw iris centers
+      const leftCenter = getIrisCenter(landmarks, leftIrisIndices);
+      const rightCenter = getIrisCenter(landmarks, rightIrisIndices);
+      
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.arc(leftCenter.x * videoWidth, leftCenter.y * videoHeight, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(rightCenter.x * videoWidth, rightCenter.y * videoHeight, 5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    function drawGraph() {
+      graphCtx.fillStyle = '#2a2a2a';
+      graphCtx.fillRect(0, 0, graph.width, graph.height);
+      
+      if (velocityHistory.length < 2) return;
+      
+      // Draw velocity over time
+      const midY = graph.height / 2;
+      const scale = 2; // pixels per deg/s
+      
+      // Zero line
+      graphCtx.strokeStyle = '#555';
+      graphCtx.lineWidth = 1;
+      graphCtx.beginPath();
+      graphCtx.moveTo(0, midY);
+      graphCtx.lineTo(graph.width, midY);
+      graphCtx.stroke();
+      
+      // Horizontal velocity (red)
+      graphCtx.strokeStyle = '#ff4a4a';
+      graphCtx.lineWidth = 2;
+      graphCtx.beginPath();
+      
+      const step = graph.width / MAX_HISTORY;
+      for (let i = 0; i < velocityHistory.length; i++) {
+        const x = i * step;
+        const y = midY - velocityHistory[i].vx * scale;
+        if (i === 0) graphCtx.moveTo(x, y);
+        else graphCtx.lineTo(x, y);
+      }
+      graphCtx.stroke();
+      
+      // Vertical velocity (blue)
+      graphCtx.strokeStyle = '#4a9eff';
+      graphCtx.beginPath();
+      for (let i = 0; i < velocityHistory.length; i++) {
+        const x = i * step;
+        const y = midY - velocityHistory[i].vy * scale;
+        if (i === 0) graphCtx.moveTo(x, y);
+        else graphCtx.lineTo(x, y);
+      }
+      graphCtx.stroke();
+      
+      // Legend
+      graphCtx.fillStyle = '#ff4a4a';
+      graphCtx.fillText('Horizontal', 10, 20);
+      graphCtx.fillStyle = '#4a9eff';
+      graphCtx.fillText('Vertical', 100, 20);
+    }
+
+    function calculateVelocity(currentPos, prevPos, dt) {
+      if (!prevPos || dt === 0) return { vx: 0, vy: 0 };
+      
+      const dx = (currentPos.x - prevPos.x) * video.videoWidth;
+      const dy = (currentPos.y - prevPos.y) * video.videoHeight;
+      
+      // Convert to degrees/second
+      const vx = (dx * PX_TO_DEG) / dt;
+      const vy = (dy * PX_TO_DEG) / dt;
+      
+      return { vx, vy };
+    }
+
+    function detectNystagmus(velocity, currentTime) {
+      const speed = Math.sqrt(velocity.vx ** 2 + velocity.vy ** 2);
+      
+      // Fast phase detection: high velocity threshold
+      const FAST_PHASE_THRESHOLD = 30; // deg/s
+      const MIN_BEAT_INTERVAL = 0.3; // seconds
+      
+      if (speed > FAST_PHASE_THRESHOLD) {
+        const lastBeat = beatTimes[beatTimes.length - 1];
+        if (!lastBeat || (currentTime - lastBeat) > MIN_BEAT_INTERVAL) {
+          beatTimes.push(currentTime);
+          
+          if (firstBeatTime === null) {
+            firstBeatTime = currentTime;
+          }
+          
+          // Estimate amplitude from recent slow phase
+          if (velocityHistory.length > 10) {
+            const recent = velocityHistory.slice(-10);
+            const avgSpeed = recent.reduce((sum, v) => sum + Math.sqrt(v.vx**2 + v.vy**2), 0) / 10;
+            amplitudes.push(avgSpeed);
+          }
+        }
+      }
+      
+      return speed > FAST_PHASE_THRESHOLD;
+    }
+
+    function updateMetrics() {
+      // FPS
+      const elapsed = (performance.now() - startTime) / 1000;
+      const fps = elapsed > 0 ? (frameCount / elapsed) : 0;
+      document.getElementById('fps').textContent = fps.toFixed(1);
+      
+      // Current velocity
+      if (velocityHistory.length > 0) {
+        const last = velocityHistory[velocityHistory.length - 1];
+        document.getElementById('velH').textContent = last.vx.toFixed(1);
+        document.getElementById('velV').textContent = last.vy.toFixed(1);
+      }
+      
+      // Nystagmus frequency
+      if (beatTimes.length >= 2) {
+        const duration = beatTimes[beatTimes.length - 1] - beatTimes[0];
+        const freq = (beatTimes.length - 1) / duration;
+        document.getElementById('freq').textContent = freq.toFixed(2);
+      }
+      
+      // Direction
+      if (velocityHistory.length > 30) {
+        const recent = velocityHistory.slice(-30);
+        const avgVx = recent.reduce((sum, v) => sum + v.vx, 0) / 30;
+        const avgVy = recent.reduce((sum, v) => sum + v.vy, 0) / 30;
+        
+        let direction = '-';
+        if (Math.abs(avgVx) > Math.abs(avgVy)) {
+          direction = avgVx > 0 ? 'Derecha' : 'Izquierda';
+        } else if (Math.abs(avgVy) > 5) {
+          direction = avgVy > 0 ? 'Abajo' : 'Arriba';
+        }
+        document.getElementById('direction').textContent = direction;
+      }
+      
+      // Latency
+      if (firstBeatTime !== null) {
+        document.getElementById('latency').textContent = firstBeatTime.toFixed(2);
+      }
+      
+      // Beats
+      document.getElementById('beats').textContent = beatTimes.length;
+      
+      // Fatigability (amplitude decay)
+      if (amplitudes.length >= 5) {
+        const firstHalf = amplitudes.slice(0, Math.floor(amplitudes.length / 2));
+        const secondHalf = amplitudes.slice(Math.floor(amplitudes.length / 2));
+        const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+        const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+        
+        const decay = avgSecond / avgFirst;
+        document.getElementById('fatigue').textContent = decay < 0.7 ? 'Sí' : 'No';
+      }
+    }
+
+    async function processFrame() {
+      if (!running) return;
+      
+      const currentTime = (performance.now() - startTime) / 1000;
+      
+      if (video.readyState >= 2) {
+        // TODO(audit): verificar API detectForVideo - timestamp debe ser presentation time en ms
+        const timestampMs = video.currentTime > 0 ? video.currentTime * 1000 : performance.now();
+        const landmarks = faceLandmarker.detectForVideo(video, timestampMs);
+        
+        if (landmarks.faceLandmarks && landmarks.faceLandmarks.length > 0) {
+          const face = landmarks.faceLandmarks[0];
+          
+          // Get iris centers
+          const leftIris = getIrisCenter(face, [468, 469, 470, 471, 472]);
+          const rightIris = getIrisCenter(face, [473, 474, 475, 476, 477]);
+          
+          // Average both eyes for more stable signal
+          const avgIris = {
+            x: (leftIris.x + rightIris.x) / 2,
+            y: (leftIris.y + rightIris.y) / 2
+          };
+          
+          // Calculate velocity
+          const prevIris = irisHistory[irisHistory.length - 1];
+          const dt = prevIris ? (currentTime - prevIris.time) : 0;
+          const velocity = calculateVelocity(avgIris, prevIris?.pos, dt);
+          
+          // Store history
+          irisHistory.push({ pos: avgIris, time: currentTime });
+          velocityHistory.push(velocity);
+          
+          if (irisHistory.length > MAX_HISTORY) {
+            irisHistory.shift();
+            velocityHistory.shift();
+          }
+          
+          // Detect nystagmus
+          detectNystagmus(velocity, currentTime);
+          
+          // Draw overlay
+          drawOverlay(face, video.videoWidth, video.videoHeight);
+        }
+        
+        frameCount++;
+      }
+      
+      // Update display
+      updateMetrics();
+      drawGraph();
+      
+      requestAnimationFrame(processFrame);
+    }
+
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' }
+        });
+        
+        video.srcObject = stream;
+        await video.play();
+        
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+        
+        running = true;
+        startTime = performance.now();
+        frameCount = 0;
+        
+        document.getElementById('btnStop').disabled = false;
+        status.textContent = 'Webcam activa. Trackeando...';
+        status.className = 'status success';
+        
+        processFrame();
+      } catch (err) {
+        status.textContent = `Error webcam: ${err.message}`;
+        status.className = 'status error';
+      }
+    }
+
+    async function loadVideo(file) {
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      await video.play();
+      
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+      
+      running = true;
+      startTime = performance.now();
+      frameCount = 0;
+      
+      document.getElementById('btnStop').disabled = false;
+      status.textContent = `Procesando video: ${file.name}`;
+      status.className = 'status success';
+      
+      processFrame();
+    }
+
+    function stop() {
+      running = false;
+      
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+      }
+      
+      if (video.src && video.src.startsWith('blob:')) {
+        URL.revokeObjectURL(video.src);
+        video.src = '';
+      }
+      
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      
+      document.getElementById('btnStop').disabled = true;
+      status.textContent = 'Detenido.';
+      status.className = 'status info';
+    }
+
+    // Event listeners
+    document.getElementById('btnWebcam').addEventListener('click', startWebcam);
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        loadVideo(e.target.files[0]);
+      }
+    });
+    document.getElementById('btnStop').addEventListener('click', stop);
+
+    // Initialize
+    initMediaPipe();
+  </script>
+</body>
+</html>
