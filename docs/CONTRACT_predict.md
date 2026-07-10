@@ -44,7 +44,7 @@ como string y sets como list.
   "onset": "sudden",
   "trigger": "positional_head",
   "timing_pattern": "episodic_triggered",
-  "nystagmus_direction": "torsional_pure",
+  "nystagmus_direction": "mixed",
   "nystagmus_direction_changing_gaze": false,
   "nystagmus_latency_s": 2.0,
   "nystagmus_duration_s": 20.0,
@@ -102,7 +102,7 @@ y el validador del reasoner (INV-2) lo refuerza en el otro extremo.
   },
   "shap": {
     "dix_hallpike": 0.41,
-    "nystagmus_torsional_pure": 0.28,
+    "nystagmus_mixed": 0.28,
     "nystagmus_latency_s": 0.12,
     "nystagmus_duration_s": 0.07,
     "trigger_positional_head": 0.05,

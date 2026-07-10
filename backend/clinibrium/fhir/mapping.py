@@ -62,6 +62,8 @@ Codes SNOMED CT / LOINC:
 """
 from __future__ import annotations
 
+import hashlib
+import json as _json
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -974,3 +976,16 @@ def to_bundle(
         timestamp=_datetime_iso(now),
         entry=entries,
     )
+
+
+def bundle_sha256(bundle: dict[str, Any]) -> str:
+    """SHA-256 hex del JSON canónico del Bundle (tamper-evident).
+
+    Mismo bundle → mismo hash; alteración → hash distinto.
+    El frontend puede recomputar el hash del bundle recibido
+    y compararlo con este valor para verificar integridad.
+    """
+    canonical = _json.dumps(
+        bundle, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

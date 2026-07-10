@@ -48,7 +48,7 @@ STUB_PROBABILITIES: dict[str, float] = {
 
 STUB_SHAP: dict[str, float] = {
     "dix_hallpike": 0.41,
-    "nystagmus_torsional_pure": 0.28,
+    "nystagmus_mixed": 0.28,
     "nystagmus_latency_s": 0.12,
     "nystagmus_duration_s": 0.07,
     "trigger_positional_head": 0.05,

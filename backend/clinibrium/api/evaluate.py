@@ -23,13 +23,13 @@ import json
 import logging
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
 from clinibrium.config import get_settings
 from clinibrium.contracts.features import CaseFeatures
 from clinibrium.contracts.results import PipelineResult
-from clinibrium.fhir import to_bundle
+from clinibrium.fhir import bundle_sha256, to_bundle
 from clinibrium.orchestrator import evaluate as orchestrator_evaluate
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,11 @@ def _serialize_result(result: PipelineResult) -> dict[str, Any]:
     return result.model_dump(mode="json", exclude_none=False)
 
 
-async def _stream_pipeline(features: CaseFeatures) -> AsyncIterator[bytes]:
+async def _stream_pipeline(
+    features: CaseFeatures,
+    *,
+    kill_reasoner: bool = False,
+) -> AsyncIterator[bytes]:
     """Generador SSE: emite un evento por cada stage del pipeline.
 
     Crea una `asyncio.Queue`, lanza `evaluate()` como task de fondo con
@@ -63,8 +67,6 @@ async def _stream_pipeline(features: CaseFeatures) -> AsyncIterator[bytes]:
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     async def on_stage(stage: str, payload: Any) -> None:
-        # El hook es awaited por el orchestrator — al suspenderse en
-        # `queue.put(...)` no bloquea a nadie más que a este generador.
         await queue.put({"event": stage, "data": payload})
 
     async def run() -> None:
@@ -73,13 +75,15 @@ async def _stream_pipeline(features: CaseFeatures) -> AsyncIterator[bytes]:
                 features,
                 recording_mode=recording_mode,
                 on_stage=on_stage,
+                kill_reasoner=kill_reasoner,
             )
             done_data = _serialize_result(result)
             if result.audit_event is not None:
-                # Artefacto auditable FHIR (Bundle IPS-CL) para el frontend/jurado.
-                done_data["fhir_bundle"] = to_bundle(
+                fhir_bundle = to_bundle(
                     result, features, result.audit_event
                 )
+                done_data["fhir_bundle"] = fhir_bundle
+                done_data["bundle_sha256"] = bundle_sha256(fhir_bundle)
             await queue.put({"event": "done", "data": done_data})
         except Exception as exc:  # noqa: BLE001 — el orchestrator ya emitió AuditEvent de error
             logger.exception("SSE: orchestrator.evaluate falló — emitiendo event: error")
@@ -115,18 +119,25 @@ async def _stream_pipeline(features: CaseFeatures) -> AsyncIterator[bytes]:
 
 
 @router.post("/api/evaluate")
-async def evaluate_endpoint(features: CaseFeatures) -> StreamingResponse:
+async def evaluate_endpoint(
+    features: CaseFeatures,
+    debug_kill_reasoner: bool = Query(False),
+) -> StreamingResponse:
     """Evalúa un caso clínico y streamea el pipeline por SSE.
 
     Body: `CaseFeatures` (Pydantic valida → 422 si inválido o con campos extra).
     Response: `text/event-stream` con eventos `redflag`, `differential`,
     `ml`, `reasoning`, `rails` y `done` (o `error` ante fallo inesperado).
 
+    Query params:
+        debug_kill_reasoner: si True, fuerza reasoning=None (INV-8 intencional,
+            degradación controlada). NO afecta urgencia ni red flags.
+
     `recording_mode` NUNCA se lee del body — se toma de `Settings`
     (AD-6 / regla dura 2).
     """
     return StreamingResponse(
-        _stream_pipeline(features),
+        _stream_pipeline(features, kill_reasoner=debug_kill_reasoner),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

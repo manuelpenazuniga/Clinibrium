@@ -180,6 +180,11 @@ async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch)
     assert any(
         e["resource"]["resourceType"] == "AuditEvent" for e in bundle["entry"]
     )
+    # bundle_sha256 presente y con longitud correcta (tamper-evident).
+    sha = done_payload["bundle_sha256"]
+    assert isinstance(sha, str)
+    assert len(sha) == 64
+    assert all(c in "0123456789abcdef" for c in sha)
 
     # Payload de redflag y rails: shape desidentificado correcto.
     redflag_payload = events[0][1]
@@ -261,23 +266,18 @@ async def test_evaluate_sse_invalid_body_bad_type_returns_422(monkeypatch):
 # =============================================================================
 
 
-def test_evaluate_endpoint_signature_has_only_casefeatures(monkeypatch):
-    """El handler acepta SOLO `features: CaseFeatures`. `recording_mode`
-    no es un parámetro del endpoint — se lee de Settings (server-side)."""
+def test_evaluate_endpoint_signature_has_no_recording_mode(monkeypatch):
+    """El handler NO acepta `recording_mode` del body — se lee de Settings
+    (server-side, AD-6). `debug_kill_reasoner` es query param legítimo de demo."""
     from clinibrium.api.evaluate import evaluate_endpoint
 
     sig = inspect.signature(evaluate_endpoint)
     assert "recording_mode" not in sig.parameters, (
-        "AD-6 violado: el handler NO debe aceptar recording_mode del body. "
+        "AD-6 violado: recording_mode NUNCA debe ser parámetro del endpoint. "
         f"Parámetros: {list(sig.parameters)}"
     )
-    assert set(sig.parameters.keys()) == {"features"}, (
-        f"Solo se espera `features`: got {list(sig.parameters)}"
-    )
-    # El annotation puede venir como string ("CaseFeatures") por `from __future__
-    # import annotations`; lo importante es que NO haya recording_mode.
-    features_param = sig.parameters["features"]
-    assert "recording_mode" not in str(features_param.annotation)
+    assert "features" in sig.parameters
+    assert "debug_kill_reasoner" in sig.parameters
 
 
 # =============================================================================
@@ -422,3 +422,153 @@ def test_settings_has_recording_mode_server_side(monkeypatch):
     lo lee con `get_settings().RECORDING_MODE`, NUNCA del body."""
     assert hasattr(get_settings(), "RECORDING_MODE")
     assert isinstance(get_settings().RECORDING_MODE, bool)
+
+
+# =============================================================================
+# kill_reasoner — debug_kill_reasoner query param (INV-8 intencional)
+# =============================================================================
+
+
+async def test_evaluate_sse_debug_kill_reasoner_yields_reasoning_none(monkeypatch):
+    """debug_kill_reasoner=true → done event con reasoning=None, reasoner no llamado."""
+    mock_reasoner = AsyncMock()
+    monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    events_capture = _capture_audit(monkeypatch)
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with client.stream(
+            "POST", "/api/evaluate?debug_kill_reasoner=true",
+            json=_bppv_benign(),
+        ) as resp:
+            text = ""
+            async for chunk in resp.aiter_text():
+                text += chunk
+
+    assert resp.status_code == 200
+    parsed = _parse_sse(text)
+    names = [n for n, _ in parsed]
+    assert "done" in names
+
+    done = parsed[names.index("done")][1]
+    assert done["reasoning"] is None
+    assert done["urgency"] == Urgency.ambulatoria.value
+    assert "fhir_bundle" in done
+    assert "bundle_sha256" in done
+    assert len(done["bundle_sha256"]) == 64
+
+    mock_reasoner.assert_not_called()
+    assert len(events_capture) == 1
+    assert events_capture[0].reasoner_status == "degraded"
+
+
+# =============================================================================
+# POST /api/decision — intervención humana registrada (AD-4)
+# =============================================================================
+
+
+async def test_decision_accept_returns_audit_event_clinician(monkeypatch):
+    """POST /api/decision con accept → 200 + AuditEvent actor=clinician."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "clinibrium.audit.engine.persist_audit", AsyncMock(return_value=None)
+    )
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/decision",
+            json={
+                "audit_event_id": "evt-test-accept",
+                "decision": "accept",
+                "reason": "BPPV classic, no red flags",
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["actor"] == "clinician"
+    assert data["event_type"] == "clinician_decision"
+    assert data["outcome"] == "accept"
+    assert "accept" in data["outcome_summary"]
+    assert "evt-test-accept" in data["outcome_summary"]
+    assert "BPPV classic" in data["outcome_summary"]
+
+
+async def test_decision_reject_returns_audit_event_clinician(monkeypatch):
+    """decision=reject → actor=clinician, outcome=reject."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "clinibrium.audit.engine.persist_audit", AsyncMock(return_value=None)
+    )
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/decision",
+            json={
+                "audit_event_id": "evt-test-reject",
+                "decision": "reject",
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["actor"] == "clinician"
+    assert data["outcome"] == "reject"
+    assert "reject" in data["outcome_summary"]
+
+
+async def test_decision_invalid_returns_422(monkeypatch):
+    """decision=maybe → 422."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "clinibrium.audit.engine.persist_audit", AsyncMock(return_value=None)
+    )
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/decision",
+            json={
+                "audit_event_id": "evt-invalid",
+                "decision": "maybe",
+            },
+        )
+
+    assert resp.status_code == 422
+
+
+async def test_decision_emits_exactly_one_audit_event(monkeypatch):
+    """Cada POST /api/decision → 1 AuditEvent clinician_decision."""
+    from unittest.mock import AsyncMock
+
+    persist_mock = AsyncMock(return_value=None)
+    monkeypatch.setattr("clinibrium.audit.engine.persist_audit", persist_mock)
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/decision",
+            json={
+                "audit_event_id": "evt-count",
+                "decision": "accept",
+                "reason": "test single event",
+            },
+        )
+
+    assert resp.status_code == 200
+    persist_mock.assert_called_once()
+    called_event = persist_mock.call_args[0][0]
+    assert called_event.event_type == "clinician_decision"
+    assert called_event.actor.value == "clinician"
+    assert called_event.outcome == "accept"

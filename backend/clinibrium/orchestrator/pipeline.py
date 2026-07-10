@@ -105,6 +105,7 @@ async def evaluate(
     grounding: Grounding | None = None,
     now: datetime | None = None,
     on_stage: StageHook | None = None,
+    kill_reasoner: bool = False,
 ) -> PipelineResult:
     """Evalúa un caso clínico completo — pipeline end-to-end de VertigoDx.
 
@@ -119,6 +120,10 @@ async def evaluate(
             un fallo del hook se loguea y NO afecta el resultado, urgencia
             ni auditoría. Si es None, el pipeline se comporta idéntico a
             versiones anteriores (INV-4 / tests existentes sin cambios).
+        kill_reasoner: si True, fuerza reasoning=None y reasoner_status="degraded"
+            (INV-8 intencional). NO afecta urgencia, red flags, forced_actions
+            ni el guard INV-4. Es la degradación INV-8 que ya existe, activada
+            a propósito (debug/demo).
 
     Returns:
         PipelineResult sellado (post-rails) con audit_event_id poblado.
@@ -148,15 +153,18 @@ async def evaluate(
         _grounding = grounding if grounding is not None else get_grounding()
         chunks = _grounding.retrieve(differential, features, k=4)
 
-        # ── Paso 5: Razonador Claude — None si down (INV-8) ─────────────────
-        reasoning = await _reasoner.reason(
-            features,
-            red_flag,
-            differential,
-            ml,
-            chunks,
-            recording_mode=recording_mode,
-        )
+        # ── Paso 5: Razonador Claude — None si down (INV-8) o kill_reasoner ──
+        if kill_reasoner:
+            reasoning = None
+        else:
+            reasoning = await _reasoner.reason(
+                features,
+                red_flag,
+                differential,
+                ml,
+                chunks,
+                recording_mode=recording_mode,
+            )
         if reasoning is not None:
             reasoner_status = "ok"
         await _notify(on_stage, "reasoning", _reasoning_payload(reasoning))

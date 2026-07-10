@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 
 from clinibrium.contracts.audit import AuditEvent
-from clinibrium.contracts.enums import ActorType
+from clinibrium.contracts.enums import ActorType, Urgency
 from clinibrium.contracts.features import CaseFeatures
 from clinibrium.contracts.results import PipelineResult
 from clinibrium.storage.persist import persist_audit
@@ -94,5 +94,49 @@ async def emit(
         outcome=outcome,
         occurred_at=occurred_at,
     )
+    await persist_audit(event)
+    return event
+
+
+async def emit_decision(
+    *,
+    audit_event_id: str,
+    decision: str,
+    reason: str | None = None,
+    occurred_at: datetime | None = None,
+) -> AuditEvent:
+    """Emite un AuditEvent de decisión clínica (AD-4, intervención humana).
+
+    NO pasa por el pipeline de evaluación — es una acción posterior
+    separada que registra la intervención significativa del médico
+    (Ley 21.719).  Emite SU propio AuditEvent (no viola INV-4 que es
+    por-evaluación).
+    """
+    from datetime import datetime as _dt
+    from datetime import timezone
+
+    occurred = occurred_at if occurred_at is not None else _dt.now(timezone.utc)
+
+    outcome_text = (
+        f"decision={decision}; "
+        f"reason={reason or 'n/a'}; "
+        f"reference={audit_event_id}"
+    )
+
+    event = AuditEvent(
+        id=str(uuid.uuid4()),
+        occurred_at=occurred,
+        event_type="clinician_decision",
+        actor=ActorType.clinician,
+        model_used=None,
+        input_features_hash="",
+        urgency=Urgency.ambulatoria,
+        forced_actions=[],
+        red_flag_activa=False,
+        outcome_summary=outcome_text,
+        reasoner_status="degraded",
+        outcome=decision,
+    )
+
     await persist_audit(event)
     return event

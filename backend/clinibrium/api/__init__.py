@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from clinibrium.api.decision import router as decision_router
 from clinibrium.api.evaluate import router as evaluate_router
 
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "clinibrium"}
 
     app.include_router(evaluate_router)
+    app.include_router(decision_router)
 
     return app
 

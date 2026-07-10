@@ -678,3 +678,40 @@ class TestAuditEventClinibrium:
             d for d in ae["entity"][0]["detail"] if d["type"] == "reasoner_status"
         )
         assert status["valueString"] == "degraded"
+
+
+# =========================================================================
+# 9. Integridad tamper-evident — bundle_sha256
+# =========================================================================
+
+
+class TestBundleIntegrity:
+    """``bundle_sha256``: hash canónico para verificación de integridad."""
+
+    def test_mismo_bundle_mismo_hash(self) -> None:
+        """Mismo bundle → mismo hash SHA-256 hex de 64 chars."""
+        from clinibrium.fhir import bundle_sha256
+        bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
+        h1 = bundle_sha256(bundle)
+        h2 = bundle_sha256(bundle)
+        assert h1 == h2
+        assert len(h1) == 64
+        assert all(c in "0123456789abcdef" for c in h1)
+
+    def test_bundle_alterado_hash_distinto(self) -> None:
+        """Alterar el bundle (modificar timestamp) → hash distinto."""
+        from clinibrium.fhir import bundle_sha256
+        bundle1 = to_bundle(_result_bppv(), _features_bppv(), _audit())
+        bundle2 = to_bundle(_result_bppv(), _features_bppv(), _audit())
+        bundle2["timestamp"] = "2020-01-01T00:00:00+00:00"
+        assert bundle_sha256(bundle1) != bundle_sha256(bundle2)
+
+    def test_hash_determinista_entre_llamadas(self) -> None:
+        """Mismos inputs a to_bundle → mismo hash (determinismo)."""
+        from clinibrium.fhir import bundle_sha256
+        result = _result_bppv(case_id="case-hash-det")
+        features = _features_bppv()
+        audit = _audit()
+        b1 = to_bundle(result, features, audit)
+        b2 = to_bundle(result, features, audit)
+        assert bundle_sha256(b1) == bundle_sha256(b2)

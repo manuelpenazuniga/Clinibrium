@@ -604,3 +604,102 @@ async def test_exactly_one_audit_event_when_exception_after_emit(monkeypatch):
     # Exactamente 1 AuditEvent (el exitoso "evaluation"), NO un 2º de error.
     assert len(events) == 1
     assert events[0].outcome == "evaluation"
+
+
+# =============================================================================
+# Kill-Claude toggle (kill_reasoner, INV-8 intencional)
+# =============================================================================
+
+
+async def test_kill_reasoner_yields_reasoning_none(monkeypatch):
+    """kill_reasoner=True → reasoning=None, reasoner.reason NUNCA llamado."""
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    mock_reasoner = AsyncMock()
+    monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
+
+    events = _capture_audit(monkeypatch)
+    result = await evaluate(
+        _bppv_benign(),
+        grounding=InlineGrounding(),
+        now=FIXED_DT,
+        kill_reasoner=True,
+    )
+
+    assert result.reasoning is None
+    assert len(events) == 1
+    assert events[0].reasoner_status == "degraded"
+    mock_reasoner.assert_not_called()
+
+
+async def test_kill_reasoner_same_urgency_as_without_kill(monkeypatch):
+    """kill_reasoner=True → misma urgencia que sin kill (INV-8 no toca seguridad)."""
+    mock_reasoner_output = _mock_reasoner_output()
+    monkeypatch.setattr(
+        "clinibrium.reasoner.reason", AsyncMock(return_value=mock_reasoner_output)
+    )
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+
+    events1 = _capture_audit(monkeypatch)
+    result_with = await evaluate(
+        _bppv_benign(),
+        grounding=InlineGrounding(),
+        now=FIXED_DT,
+        kill_reasoner=False,
+    )
+    assert len(events1) == 1
+    assert result_with.reasoning is not None
+    urgency_with = result_with.urgency
+
+    events2 = _capture_audit(monkeypatch)
+    result_without = await evaluate(
+        _bppv_benign(),
+        grounding=InlineGrounding(),
+        now=FIXED_DT,
+        kill_reasoner=True,
+    )
+    assert len(events2) == 1
+    assert result_without.reasoning is None
+    urgency_without = result_without.urgency
+
+    assert urgency_with == urgency_without
+
+
+async def test_kill_reasoner_exactly_one_audit_event(monkeypatch):
+    """kill_reasoner=True → exactamente 1 AuditEvent (INV-4 intacto)."""
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
+
+    events = _capture_audit(monkeypatch)
+    result = await evaluate(
+        _bppv_benign(),
+        grounding=InlineGrounding(),
+        now=FIXED_DT,
+        kill_reasoner=True,
+    )
+
+    assert len(events) == 1
+    assert result.audit_event_id is not None
+    assert result.audit_event_id == events[0].id
+    assert events[0].reasoner_status == "degraded"
+
+
+async def test_kill_reasoner_red_flag_case_urgency_unchanged(monkeypatch):
+    """kill_reasoner=True con red flag activa → urgencia inmediata (no baja)."""
+    mock_reasoner_output = _mock_reasoner_output()
+    monkeypatch.setattr(
+        "clinibrium.reasoner.reason", AsyncMock(return_value=mock_reasoner_output)
+    )
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+
+    events = _capture_audit(monkeypatch)
+    result = await evaluate(
+        _red_flag_case(),
+        grounding=InlineGrounding(),
+        now=FIXED_DT,
+        kill_reasoner=True,
+    )
+
+    assert result.red_flag.red_flag_activa is True
+    assert result.urgency == Urgency.inmediata
+    assert len(events) == 1
+    assert events[0].urgency == Urgency.inmediata
