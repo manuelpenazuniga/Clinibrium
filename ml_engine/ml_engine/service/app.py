@@ -79,10 +79,8 @@ async def predict(request: Request) -> dict[str, Any]:
 
     try:
         model = get_model()
-        leaf_probs = model.predict_proba_one(body)
-        probabilities: dict[str, float] = {k: float(v) for k, v in leaf_probs.items()}
-        # abstención (TB1.5) aún no activa → centinela en 0.0; el contrato admite las 9 claves
-        probabilities.setdefault(_DOMAIN.hierarchy.abstain_label, 0.0)
+        # predict_case = calibrado + abstención (9 claves: 8 hojas + undetermined)
+        probabilities: dict[str, float] = {k: float(v) for k, v in model.predict_case(body).items()}
         _validate_output(probabilities)
     except HTTPException:
         raise

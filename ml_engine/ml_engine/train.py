@@ -1,22 +1,28 @@
-"""CLI de entrenamiento (TB1.8): genera sintético → entrena → evalúa → guarda.
+"""CLI de entrenamiento (TB1.8/1.4/1.5): genera → entrena → calibra → abstención → evalúa → guarda.
 
-Uso:  python -m ml_engine.train  [--out DIR] [--n N] [--iterations I]
+Split 3-vías train/calibración/test (sin leakage): el modelo se ajusta en train,
+la temperatura y el umbral de abstención en calibración, y las métricas (incl.
+ECE) se reportan UNA vez sobre test intacto.
 
 Las métricas miden RECUPERACIÓN DEL PROCESO GENERATIVO sintético (AD-17), NO
-desempeño clínico. Escribe artifacts (modelos + manifest) + MODEL_CARD.md.
+desempeño clínico. Escribe artifacts (modelos + calibración + manifest) + MODEL_CARD.
 """
 from __future__ import annotations
 
 import argparse
 import dataclasses
+import math
 from pathlib import Path
 
+from ml_engine.core.abstain import ConfidenceGate
+from ml_engine.core.calibrate import TemperatureCalibrator, ece
 from ml_engine.core.model import HierarchicalCatBoost, _danger_leaves
-from ml_engine.core.synth import generate
 from ml_engine.core.spec import Domain
+from ml_engine.core.synth import generate
 from ml_engine.domains import vertigo
 
 _DEFAULT_OUT = Path(__file__).parent / "artifacts" / "model"
+_TARGET_COVERAGE = 0.90
 
 
 @dataclasses.dataclass
@@ -25,35 +31,47 @@ class Metrics:
     leaf_accuracy: float
     gate_accuracy: float
     danger_recall: float  # P(pred peligro | verdadero peligro) — el que importa
+    ece_raw: float
+    ece_calibrated: float
+    abstain_rate: float
+    temperature: float
+    abstain_threshold: float
 
 
 def _evaluate(model: HierarchicalCatBoost, test_df, domain: Domain) -> Metrics:
+    leaves = domain.hierarchy.leaves
     danger = _danger_leaves(domain.hierarchy)
     rows = test_df.to_dict("records")
-    y_true = [str(r["label"]) for r in rows]
-    preds = model.predict_proba(rows)
+    y = [str(r["label"]) for r in rows]
+    raw = model.predict_proba(rows)
+    cal = model.calibrator.transform(raw) if model.calibrator else raw
 
-    leaf_hit = 0
-    gate_hit = 0
-    danger_total = 0
-    danger_caught = 0
-    for yt, p in zip(y_true, preds, strict=True):
-        pred_leaf = max(p, key=p.__getitem__)
-        leaf_hit += int(pred_leaf == yt)
-        p_danger = sum(p[leaf] for leaf in danger)
+    leaf_hit = gate_hit = 0
+    d_total = d_caught = abst = 0
+    for yt, pcal in zip(y, cal, strict=True):
+        pred = max(pcal, key=pcal.__getitem__)
+        leaf_hit += int(pred == yt)
+        p_danger = sum(pcal[leaf] for leaf in danger)
         pred_danger = p_danger > 0.5
         true_danger = yt in danger
         gate_hit += int(pred_danger == true_danger)
         if true_danger:
-            danger_total += 1
-            danger_caught += int(pred_danger)
+            d_total += 1
+            d_caught += int(pred_danger)
+        if model.abstainer and model.abstainer.abstains(pcal):
+            abst += 1
 
     n = len(rows)
     return Metrics(
         n_test=n,
         leaf_accuracy=leaf_hit / n,
         gate_accuracy=gate_hit / n,
-        danger_recall=(danger_caught / danger_total) if danger_total else float("nan"),
+        danger_recall=(d_caught / d_total) if d_total else math.nan,
+        ece_raw=ece(raw, y, leaves),
+        ece_calibrated=ece(cal, y, leaves),
+        abstain_rate=abst / n,
+        temperature=model.calibrator.temperature if model.calibrator else 1.0,
+        abstain_threshold=model.abstainer.threshold if model.abstainer else 0.0,
     )
 
 
@@ -63,17 +81,35 @@ def train_domain(
     seed: int = 20260711,
     n_samples: int | None = None,
     params: dict | None = None,
-    test_frac: float = 0.2,
+    splits: tuple[float, float, float] = (0.6, 0.2, 0.2),
 ) -> tuple[HierarchicalCatBoost, Metrics]:
     spec = domain.synthetic
     if n_samples is not None:
         spec = dataclasses.replace(spec, n_samples=n_samples)
     df = generate(spec, domain.features, seed=seed)
-    n_test = int(len(df) * test_frac)
-    test_df, train_df = df.iloc[:n_test], df.iloc[n_test:]
+    n = len(df)
+    n_test = int(n * splits[2])
+    n_cal = int(n * splits[1])
+    test_df = df.iloc[:n_test]
+    cal_df = df.iloc[n_test : n_test + n_cal]
+    train_df = df.iloc[n_test + n_cal :]
+
     model = HierarchicalCatBoost.train(domain, train_df, seed=seed, params=params)
-    metrics = _evaluate(model, test_df, domain)
-    return model, metrics
+
+    # calibración + abstención en el split de calibración (sin tocar test)
+    leaves = domain.hierarchy.leaves
+    cal_rows = cal_df.to_dict("records")
+    raw_cal = model.predict_proba(cal_rows)
+    y_cal = [str(r["label"]) for r in cal_rows]
+    model.calibrator = TemperatureCalibrator.fit(raw_cal, y_cal, leaves)
+    cal_calibrated = model.calibrator.transform(raw_cal)
+    model.abstainer = ConfidenceGate.fit(
+        cal_calibrated,
+        target_coverage=_TARGET_COVERAGE,
+        abstain_label=domain.hierarchy.abstain_label,
+    )
+
+    return model, _evaluate(model, test_df, domain)
 
 
 def _write_model_card(out: Path, model: HierarchicalCatBoost, m: Metrics, domain: Domain) -> None:
@@ -86,29 +122,35 @@ def _write_model_card(out: Path, model: HierarchicalCatBoost, m: Metrics, domain
   `dangerous vs peripheral` con `monotone_constraints=+1` en features de riesgo
   (INV-9: subir una feature de riesgo nunca baja P(dangerous), garantía dura del
   gate pre-abstención). Hijos: central/cardiogénico, periférico (5), BPPV (2).
+- **Calibración:** temperature scaling del vector final, T={m.temperature:.3f}
+  (ajustada en split de calibración por NLL). **Abstención:** gate de confianza
+  τ={m.abstain_threshold:.3f} (cobertura objetivo {_TARGET_COVERAGE:.0%}) →
+  `undetermined` como centinela (INV-10).
 - **Features:** {len(domain.features.feature_names)} ({len(domain.features.categorical_names)} categóricas +
   {len(domain.features.numeric_feature_names)} numéricas, incl. {len(domain.features.derived)} derivadas).
 - **Risk features (monótonas):** {", ".join(domain.features.risk_features)}.
 
 ## Métricas (recuperación del generador sintético, NO clínicas)
-Sobre {m.n_test} casos sintéticos held-out (mismo generador; miden cuán bien el
-modelo reconstruye las reglas con que se fabricaron los datos):
+Sobre {m.n_test} casos sintéticos held-out (test intacto, evaluado una vez):
 
 | Métrica | Valor |
 |---|---|
 | Leaf accuracy (8 clases) | {m.leaf_accuracy:.3f} |
 | Gate accuracy (peligro vs periférico) | {m.gate_accuracy:.3f} |
 | **Danger recall** (peligro capturado) | {m.danger_recall:.3f} |
+| ECE crudo | {m.ece_raw:.4f} |
+| ECE calibrado (T={m.temperature:.2f}) | {m.ece_calibrated:.4f} |
+| Tasa de abstención (→ undetermined) | {m.abstain_rate:.3f} |
 
 > ⚠️ Riesgo de circularidad conocido: el label genera las features y el modelo
 > las reaprende → estas métricas NO implican utilidad clínica. Son "recuperación
-> del generador". Priors provisionales pendientes de firma del especialista (T-CLIN).
+> del generador". El ECE calibrado se REPORTA (no se impone como test — temperature
+> minimiza NLL, no ECE). Priors provisionales pendientes de firma del especialista (T-CLIN).
 
 ## Límites (honestidad)
 - El ML **nunca** fija urgencia (INV-11); solo aporta evidencia probabilística
   al razonador. Los rieles deterministas deciden.
-- Sin calibración clínica; la calibración (temperature scaling) se mide con ECE
-  sobre held-out sintético (ver TB1.4).
+- La abstención es EVIDENCIA (el ML sabe decir "no sé"); NO escala urgencia.
 - SHAP (si presente) = atribución local no causal sobre el generador sintético.
 """
     (out / "MODEL_CARD.md").write_text(card)
@@ -133,8 +175,11 @@ def main() -> None:
     args = ap.parse_args()
     params = {"iterations": args.iterations} if args.iterations else None
     _, m = build_and_save(args.out, seed=args.seed, n_samples=args.n, params=params)
-    print(f"OK · leaf_acc={m.leaf_accuracy:.3f} gate_acc={m.gate_accuracy:.3f} "
-          f"danger_recall={m.danger_recall:.3f} (n_test={m.n_test})")
+    print(
+        f"OK · leaf_acc={m.leaf_accuracy:.3f} gate_acc={m.gate_accuracy:.3f} "
+        f"danger_recall={m.danger_recall:.3f} ECE {m.ece_raw:.3f}→{m.ece_calibrated:.3f} "
+        f"abstain={m.abstain_rate:.3f} (n_test={m.n_test})"
+    )
 
 
 if __name__ == "__main__":
