@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+# artefactos de modelo: se regeneran con train.py; no versionar binarios grandes
+ml_engine/artifacts/*.cbm
+ml_engine/artifacts/*.pkl
+ml_engine/artifacts/*.joblib
