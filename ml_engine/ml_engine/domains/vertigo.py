@@ -11,6 +11,8 @@ que el modelo entrenado sobre sintético consuma los mismos strings al servir.
 """
 from __future__ import annotations
 
+import math
+
 from ml_engine.core.spec import (
     DerivedFeature,
     Domain,
@@ -32,12 +34,19 @@ SEED = 20260711
 # --------------------------------------------------------------------------
 
 
+def _is_nan(v: object) -> bool:
+    return isinstance(v, float) and math.isnan(v)
+
+
 def _b(v: object) -> float:
+    # NaN-safe: en Python bool(nan) es True → hay que guardarlo explícito.
+    if v is None or _is_nan(v):
+        return 0.0
     return 1.0 if v else 0.0
 
 
 def _count(v: object) -> float:
-    if v is None:
+    if v is None or _is_nan(v):
         return 0.0
     if isinstance(v, (list, tuple, set, frozenset)):
         return float(len(v))
