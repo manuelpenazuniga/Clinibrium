@@ -41,3 +41,10 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # ruido de deprecación de shap/matplotlib (no es nuestro código)
+    "ignore::PendingDeprecationWarning",
+    "ignore::DeprecationWarning:shap.*",
+]

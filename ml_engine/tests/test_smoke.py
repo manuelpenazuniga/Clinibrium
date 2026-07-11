@@ -20,16 +20,29 @@ def test_ml_deps_import() -> None:
 
 
 def test_core_never_imports_clinibrium_or_domains() -> None:
-    """AD-15/AD-16: el core es agnóstico — no importa A ni dominios."""
+    """AD-15/AD-16: el core es agnóstico — no IMPORTA A ni dominios.
+
+    Chequea imports reales vía AST (no menciones en docstrings/comentarios).
+    """
+    import ast
     import inspect
     import pkgutil
 
     import ml_engine.core as core_pkg
 
+    def _imported_modules(source: str) -> set[str]:
+        mods: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                mods.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mods.add(node.module)
+        return mods
+
     offenders = []
     for mod in pkgutil.iter_modules(core_pkg.__path__):
         m = __import__(f"ml_engine.core.{mod.name}", fromlist=["_"])
-        src = inspect.getsource(m)
-        if "clinibrium" in src or "ml_engine.domains" in src:
+        imported = _imported_modules(inspect.getsource(m))
+        if any(x.startswith("clinibrium") or x.startswith("ml_engine.domains") for x in imported):
             offenders.append(mod.name)
     assert not offenders, f"core importa A/dominios: {offenders}"
