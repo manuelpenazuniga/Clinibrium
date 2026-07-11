@@ -25,6 +25,7 @@ from catboost import CatBoostClassifier, Pool
 from ml_engine.core.abstain import ConfidenceGate
 from ml_engine.core.calibrate import TemperatureCalibrator
 from ml_engine.core.encode import encode
+from ml_engine.core.explain import top_shap_for_node
 from ml_engine.core.spec import Domain, LabelHierarchy
 
 _MANIFEST = "manifest.json"
@@ -243,6 +244,18 @@ class HierarchicalCatBoost:
 
     def predict_proba(self, rows: list[dict]) -> list[dict[str, float]]:
         return [self.predict_proba_one(r) for r in rows]
+
+    def explain_gate(self, row: dict, *, top_k: int = 6) -> dict[str, float]:
+        """SHAP local del GATE de peligro (TB1.6): {feature → contribución a P(dangerous)}.
+
+        Atribución de UN nodo (sin agregación cross-nodo). Positivo ⇒ empuja a
+        peligro. Sobre datos sintéticos explica el generador, no causalidad clínica.
+        """
+        x_row, cat = encode([row], self.features)
+        gate = self._nodes[self.hierarchy.root]
+        return top_shap_for_node(
+            gate.model, x_row, cat, self.features.feature_names, top_k=top_k
+        )
 
     def predict_case(self, row: dict) -> dict[str, float]:
         """Distribución FINAL sobre las 9 claves (8 hojas + abstención, Σ≈1).

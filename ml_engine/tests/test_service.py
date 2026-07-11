@@ -36,7 +36,11 @@ def test_predict_matches_frozen_contract_shape(client: TestClient) -> None:
     assert set(data) == _FROZEN_CONTRACT_KEYS
     assert isinstance(data["probabilities"], dict)
     assert abs(sum(data["probabilities"].values()) - 1.0) < 1e-3
-    assert data["shap"] is None
+    # shap: None o dict feature→float (TB1.6, opcional por contrato)
+    assert data["shap"] is None or (
+        isinstance(data["shap"], dict)
+        and all(isinstance(v, float) for v in data["shap"].values())
+    )
     assert data["model_version"].startswith("synthetic-")
 
 

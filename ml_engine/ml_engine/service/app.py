@@ -89,4 +89,16 @@ async def predict(request: Request) -> dict[str, Any]:
             status_code=503, detail=f"ml_engine degradado ({type(exc).__name__})"
         ) from exc
 
-    return {"probabilities": probabilities, "shap": None, "model_version": model.model_version}
+    # SHAP local del gate (TB1.6): explicabilidad opcional; si falla → None
+    # (la explicación NUNCA debe tumbar la predicción).
+    shap: dict[str, float] | None
+    try:
+        shap = model.explain_gate(body)
+        for v in shap.values():
+            if not math.isfinite(v):
+                shap = None
+                break
+    except Exception:  # noqa: BLE001
+        shap = None
+
+    return {"probabilities": probabilities, "shap": shap, "model_version": model.model_version}
