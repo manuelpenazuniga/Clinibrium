@@ -239,9 +239,13 @@ RULES: list[RedFlagRule] = [
     # --- Bloque B: otras urgencias ---
     RedFlagRule(
         id="B1",
-        label="Hipoacusia neurosensorial súbita",
-        severity="high",
-        forced_actions=(ForcedAction.DERIVAR_URGENTE,),
+        label="Hipoacusia neurosensorial súbita aislada (ORL prioritario, 48h)",
+        # T-CLIN r1: hipoacusia súbita AISLADA = ORL PRIORITARIO (no urgencia),
+        # ventana 48h, SNHL ≥20 dB. → ESCALAR (prioritaria), no DERIVAR_URGENTE.
+        # Si coexiste con vértigo agudo (AVS), A8 aporta DERIVAR_URGENTE y gana
+        # inmediata (AICA). severity=medium (prioridad, no emergencia).
+        severity="medium",
+        forced_actions=(ForcedAction.ESCALAR,),
         predicate=_b1_sudden_unilateral_hearing_loss,
     ),
     RedFlagRule(

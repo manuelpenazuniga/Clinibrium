@@ -334,15 +334,17 @@ def test_a10_does_not_fire_outside_avs() -> None:
 
 
 def test_b1_sudden_unilateral_hearing_loss_isolated() -> None:
-    """B1 cubre la súbita aislada (sin AVS) para no asumir laberintitis."""
+    """T-CLIN r1: hipoacusia súbita AISLADA (sin AVS) = ORL PRIORITARIO (48h),
+    NO urgencia. B1 aporta ESCALAR (prioritaria), no DERIVAR_URGENTE, y NO
+    activa red_flag_activa (que es solo para inmediata)."""
     f = CaseFeatures(hearing_loss=HearingLoss.sudden_unilateral)
     r = evaluate(f)
     h = _hit(r, "B1")
-    assert h.severity == "high"
-    assert h.forced_actions == [ForcedAction.DERIVAR_URGENTE]
-    assert r.red_flag_activa is True
+    assert h.severity == "medium"
+    assert h.forced_actions == [ForcedAction.ESCALAR]
+    assert r.red_flag_activa is False  # aislada NO es urgencia
     # A8 NO debe disparar sin AVS
-    assert all(h.id != "A8" for h in r.hits)
+    assert all(hit.id != "A8" for hit in r.hits)
 
 
 def test_b2_meningismus_or_altered_consciousness() -> None:

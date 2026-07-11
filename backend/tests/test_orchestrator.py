@@ -703,3 +703,37 @@ async def test_kill_reasoner_red_flag_case_urgency_unchanged(monkeypatch):
     assert result.urgency == Urgency.inmediata
     assert len(events) == 1
     assert events[0].urgency == Urgency.inmediata
+
+
+# =============================================================================
+# T-CLIN r1 — hipoacusia súbita: A8 (con AVS) urgente vs B1 (aislada) prioritaria
+# =============================================================================
+
+
+async def test_isolated_sudden_hearing_loss_is_prioritaria(monkeypatch):
+    """T-CLIN r1: hipoacusia neurosensorial súbita AISLADA → PRIORITARIA
+    (ORL 48h), NO inmediata. B1 aporta ESCALAR; no activa red_flag_activa."""
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    f = CaseFeatures(hearing_loss=HearingLoss.sudden_unilateral)
+    result = await evaluate(
+        f, grounding=InlineGrounding(), now=FIXED_DT, kill_reasoner=True
+    )
+    assert result.red_flag.red_flag_activa is False
+    assert result.urgency == Urgency.prioritaria
+    assert ForcedAction.ESCALAR in result.forced_actions
+
+
+async def test_sudden_hearing_loss_with_avs_is_inmediata(monkeypatch):
+    """Hipoacusia súbita + vértigo agudo (AVS) → A8 (AICA) → INMEDIATA.
+    Prueba de seguridad del cambio B1: no debe de-escalar el caso con AVS."""
+    monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
+    f = CaseFeatures(
+        hearing_loss=HearingLoss.sudden_unilateral,
+        timing_pattern=TimingPattern.acute_continuous,
+    )
+    result = await evaluate(
+        f, grounding=InlineGrounding(), now=FIXED_DT, kill_reasoner=True
+    )
+    assert result.red_flag.red_flag_activa is True
+    assert result.urgency == Urgency.inmediata
+    assert ForcedAction.DERIVAR_URGENTE in result.forced_actions
