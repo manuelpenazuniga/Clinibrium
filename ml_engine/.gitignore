@@ -5,7 +5,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 build/
-# artefactos de modelo: se regeneran con train.py; no versionar binarios grandes
-ml_engine/artifacts/*.cbm
-ml_engine/artifacts/*.pkl
-ml_engine/artifacts/*.joblib
+# artefactos de modelo entrenado: se regeneran con `python -m ml_engine.train`
+ml_engine/artifacts/model/

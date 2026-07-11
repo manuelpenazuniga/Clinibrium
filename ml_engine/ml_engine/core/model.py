@@ -13,7 +13,10 @@ era inimplementable, fix Codex+Gemini).
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,6 +24,8 @@ from catboost import CatBoostClassifier, Pool
 
 from ml_engine.core.encode import encode
 from ml_engine.core.spec import Domain, LabelHierarchy
+
+_MANIFEST = "manifest.json"
 
 _DEFAULT_PARAMS = {
     "depth": 5,
@@ -67,11 +72,14 @@ class _NodeModel:
 class HierarchicalCatBoost:
     """Ensamble LCPN. Entrenar con :meth:`train`; predecir con :meth:`predict_proba`."""
 
-    def __init__(self, domain: Domain, nodes: dict[str, _NodeModel]) -> None:
+    def __init__(
+        self, domain: Domain, nodes: dict[str, _NodeModel], model_version: str
+    ) -> None:
         self.domain = domain
         self.features = domain.features
         self.hierarchy = domain.hierarchy
         self._nodes = nodes
+        self.model_version = model_version
 
     # ---- entrenamiento --------------------------------------------------
 
@@ -124,7 +132,44 @@ class HierarchicalCatBoost:
             model.fit(pool)
             nodes[nid] = _NodeModel(nid, children, model, is_gate=is_gate)
 
-        return cls(domain, nodes)
+        version = f"synthetic-v1-seed{seed}"
+        return cls(domain, nodes, version)
+
+    # ---- persistencia (TB1.8) ------------------------------------------
+
+    def save(self, out_dir: str | Path) -> None:
+        d = Path(out_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        manifest: dict[str, Any] = {
+            "domain": self.domain.name,
+            "model_version": self.model_version,
+            "feature_names": list(self.features.feature_names),
+            "nodes": [],
+        }
+        for nid, nm in self._nodes.items():
+            fname = f"node_{nid}.cbm"
+            nm.model.save_model(str(d / fname))
+            manifest["nodes"].append(
+                {"node_id": nid, "classes": nm.classes, "is_gate": nm.is_gate, "file": fname}
+            )
+        (d / _MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True))
+
+    @classmethod
+    def load(cls, in_dir: str | Path, domain: Domain) -> HierarchicalCatBoost:
+        d = Path(in_dir)
+        manifest = json.loads((d / _MANIFEST).read_text())
+        if manifest["domain"] != domain.name:
+            raise ValueError(
+                f"manifest de dominio '{manifest['domain']}' ≠ '{domain.name}'"
+            )
+        nodes: dict[str, _NodeModel] = {}
+        for entry in manifest["nodes"]:
+            model = CatBoostClassifier()
+            model.load_model(str(d / entry["file"]))
+            nodes[entry["node_id"]] = _NodeModel(
+                entry["node_id"], list(entry["classes"]), model, is_gate=entry["is_gate"]
+            )
+        return cls(domain, nodes, manifest["model_version"])
 
     # ---- inferencia -----------------------------------------------------
 
