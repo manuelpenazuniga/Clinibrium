@@ -62,7 +62,20 @@ cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run 
 - El artefacto es un **FHIR R4 Clinical Case Bundle** (perfiles CL Core donde existen), **no un IPS-CL** completo.
 - La clasificación regulatoria (FDA) es una **hipótesis** dependiente del intended use, no una clasificación confirmada.
 
+## Claude Code Safety Harness
+Patrón Claude-native reutilizable (`.claude/`): cuando Claude Code edita un
+archivo *safety-critical* (red flags, rieles, reasoner, orchestrator, contracts),
+un **hook** (`hooks/verify-clinical-invariants.sh`) corre automáticamente los
+tests de **invariante** relevantes (INV-1/2/4/5/7/8) y **bloquea** si se rompió
+una garantía de seguridad. La **skill** `clinical-rail-authoring` guía la
+conversión de una regla firmada por el especialista en código verificable — con
+tests adversariales obligatorios, sin que el modelo decida clínica. *Claude
+convierte expertise humano en artefactos verificables; el runtime determinista
+los hace confiables.*
+
 ## Estructura
 - `backend/clinibrium/` — engines, rails, reasoner, orchestrator, audit, storage, fhir, api, grounding, ml_client, contracts.
+- `ml_engine/` — Track B: capa de confianza ML agnóstica de dominio (paquete aislado, experimental/sintético).
+- `.claude/` — Safety Harness (hook de invariantes + skill de autoría de rieles).
 - `frontend/` — Next.js: landing (`/`), pipeline demo (`/demo`, con onboarding) y módulo Dix-Hallpike (`/dix-hallpike`).
 - `docker-compose.yml` — `pgvector/pgvector:pg16`. · `check.sh` — gate.
