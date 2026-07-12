@@ -1,4 +1,6 @@
 """TB1.2 — generador sintético + encode ciego."""
+import dataclasses
+
 import numpy as np
 
 from ml_engine.core.encode import encode
@@ -30,7 +32,26 @@ def test_row_count_matches_n_samples() -> None:
 def test_bppv_prior_is_positional() -> None:
     df = generate(SPEC, FEATURES, seed=20260711)
     bppv = df[df["label"] == "bppv_posterior"]
-    assert (bppv["trigger"] == "positional_head").mean() > 0.7
+    # robusto a missingness: medir sobre los valores presentes
+    trig = bppv["trigger"].dropna()
+    assert (trig == "positional_head").mean() > 0.7
+
+
+def test_missingness_drops_some_features() -> None:
+    """SPEC tiene missing_rate>0 → algunas features quedan faltantes (esparso)."""
+    df = generate(SPEC, FEATURES, seed=20260711)
+    assert df["trigger"].isna().mean() > 0.05
+    # sin missingness: categóricas siempre presentes
+    df0 = generate(dataclasses.replace(SPEC, missing_rate=0.0), FEATURES, seed=1)
+    assert df0["trigger"].isna().sum() == 0
+
+
+def test_bppv_has_no_spontaneous_pure_torsional() -> None:
+    """Fix P0.5: el perfil BPPV NO debe emitir torsional/vertical puro (eso es central)."""
+    df = generate(dataclasses.replace(SPEC, missing_rate=0.0), FEATURES, seed=1)
+    bppv = df[df["label"] == "bppv_posterior"]["nystagmus_direction"]
+    assert (bppv == "torsional_pure").sum() == 0
+    assert (bppv == "vertical_pure").sum() == 0
 
 
 def test_central_prior_has_danger_signal() -> None:

@@ -89,12 +89,50 @@ def test_clear_central_case_flags_danger() -> None:
 
 
 def test_clear_bppv_case_is_peripheral() -> None:
+    """VPPB = patrón POSICIONAL + fatigable (dix_hallpike), NO torsional espontáneo.
+
+    (Fix P0.5: el torsional/vertical espontáneo es CENTRAL — ver test de
+    consistencia A↔B abajo; VPPB se representa por el patrón posicional.)
+    """
     model = _small_model()
     bppv = {
         "trigger": "positional_head", "timing_pattern": "episodic_triggered",
         "duration": "under_1min", "onset": "sudden", "dix_hallpike": "right_positive",
-        "nystagmus_direction": "torsional_pure",
+        "nystagmus_fatigable": True, "nystagmus_latency_s": 5.0,
     }
     p = model.predict_proba_one(bppv)
     p_danger = p["central_suspected"] + p["cardiogenic_suspected"]
     assert p_danger < 0.3, f"P(peligro)={p_danger:.3f} no debería dominar en BPPV claro"
+
+
+def test_P05_spontaneous_torsional_not_classified_as_benign_bppv() -> None:
+    """Fix P0.5 — la propiedad de SEGURIDAD que importa.
+
+    El bug original: el generador ponía torsional_pure en el perfil BPPV → B
+    clasificaba un nistagmo ESPONTÁNEO puro torsional/vertical como **VPPB benigno
+    posicional** (que sugeriría Epley), contradiciendo a A (red flag A2 → central).
+
+    B es una capa PROBABILÍSTICA blanda; A es la autoridad de seguridad (regla
+    dura, INV-1). No le exigimos a B replicar la regla dura, pero sí que NO
+    etiquete el signo central como VPPB tratable. (La dirección de reconciliación
+    hacia peligro está cubierta por el test-grilla INV-9, que ahora incluye
+    `central_nystagmus_pattern` como feature de riesgo.)
+    """
+    model = _small_model()
+    for direction in ("torsional_pure", "vertical_pure"):
+        spont = {
+            "trigger": "spontaneous", "timing_pattern": "acute_continuous",
+            "onset": "sudden", "nystagmus_direction": direction,
+        }
+        p = model.predict_proba_one(spont)
+        assert p["bppv_posterior"] < 0.15, (
+            f"{direction} espontáneo → B lo llama VPPB posterior "
+            f"({p['bppv_posterior']:.3f}); contradice a A y sugeriría Epley"
+        )
+        assert p["bppv_horizontal"] < 0.15
+
+
+def test_P05_central_nystagmus_pattern_is_a_risk_feature() -> None:
+    """El patrón de nistagmo central alimenta el gate de peligro (monótono)."""
+    assert "central_nystagmus_pattern" in vertigo.FEATURES.risk_features
+    # y NO aparece torsional/vertical puro en el perfil BPPV (se testea en synth)

@@ -36,9 +36,28 @@ class Metrics:
     abstain_rate: float
     temperature: float
     abstain_threshold: float
+    # Stress set: mismos priors pero 40% de features faltantes (robustez a
+    # inputs reales muy esparsos).
+    stress_leaf_accuracy: float
+    stress_abstain_rate: float
 
 
-def _evaluate(model: HierarchicalCatBoost, test_df, domain: Domain) -> Metrics:
+def _leaf_acc_abstain(model: HierarchicalCatBoost, df, domain: Domain) -> tuple[float, float]:
+    """(leaf_accuracy, abstain_rate) sobre un DataFrame — reusable para stress."""
+    rows = df.to_dict("records")
+    y = [str(r["label"]) for r in rows]
+    raw = model.predict_proba(rows)
+    cal = model.calibrator.transform(raw) if model.calibrator else raw
+    hit = abst = 0
+    for yt, pcal in zip(y, cal, strict=True):
+        hit += int(max(pcal, key=pcal.__getitem__) == yt)
+        if model.abstainer and model.abstainer.abstains(pcal):
+            abst += 1
+    n = max(len(rows), 1)
+    return hit / n, abst / n
+
+
+def _evaluate(model: HierarchicalCatBoost, test_df, stress_df, domain: Domain) -> Metrics:
     leaves = domain.hierarchy.leaves
     danger = _danger_leaves(domain.hierarchy)
     rows = test_df.to_dict("records")
@@ -62,6 +81,7 @@ def _evaluate(model: HierarchicalCatBoost, test_df, domain: Domain) -> Metrics:
             abst += 1
 
     n = len(rows)
+    stress_leaf, stress_abst = _leaf_acc_abstain(model, stress_df, domain)
     return Metrics(
         n_test=n,
         leaf_accuracy=leaf_hit / n,
@@ -72,6 +92,8 @@ def _evaluate(model: HierarchicalCatBoost, test_df, domain: Domain) -> Metrics:
         abstain_rate=abst / n,
         temperature=model.calibrator.temperature if model.calibrator else 1.0,
         abstain_threshold=model.abstainer.threshold if model.abstainer else 0.0,
+        stress_leaf_accuracy=stress_leaf,
+        stress_abstain_rate=stress_abst,
     )
 
 
@@ -109,7 +131,13 @@ def train_domain(
         abstain_label=domain.hierarchy.abstain_label,
     )
 
-    return model, _evaluate(model, test_df, domain)
+    # stress set: mismos priors, 40% de features faltantes (robustez a esparsos)
+    stress_spec = dataclasses.replace(
+        spec, n_samples=min(1500, spec.n_samples), missing_rate=0.40, seed=spec.seed + 1
+    )
+    stress_df = generate(stress_spec, domain.features, seed=spec.seed + 1)
+
+    return model, _evaluate(model, test_df, stress_df, domain)
 
 
 def _write_model_card(out: Path, model: HierarchicalCatBoost, m: Metrics, domain: Domain) -> None:
@@ -141,6 +169,8 @@ Sobre {m.n_test} casos sintéticos held-out (test intacto, evaluado una vez):
 | ECE crudo | {m.ece_raw:.4f} |
 | ECE calibrado (T={m.temperature:.2f}) | {m.ece_calibrated:.4f} |
 | Tasa de abstención (→ undetermined) | {m.abstain_rate:.3f} |
+| **Stress** — leaf accuracy con 40% de features faltantes | {m.stress_leaf_accuracy:.3f} |
+| **Stress** — tasa de abstención con 40% faltantes | {m.stress_abstain_rate:.3f} |
 
 > ⚠️ Riesgo de circularidad conocido: el label genera las features y el modelo
 > las reaprende → estas métricas NO implican utilidad clínica. Son "recuperación
@@ -178,7 +208,8 @@ def main() -> None:
     print(
         f"OK · leaf_acc={m.leaf_accuracy:.3f} gate_acc={m.gate_accuracy:.3f} "
         f"danger_recall={m.danger_recall:.3f} ECE {m.ece_raw:.3f}→{m.ece_calibrated:.3f} "
-        f"abstain={m.abstain_rate:.3f} (n_test={m.n_test})"
+        f"abstain={m.abstain_rate:.3f} · stress(40%miss) leaf={m.stress_leaf_accuracy:.3f} "
+        f"abstain={m.stress_abstain_rate:.3f} (n_test={m.n_test})"
     )
 
 

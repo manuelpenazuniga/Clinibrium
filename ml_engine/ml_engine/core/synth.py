@@ -108,6 +108,11 @@ def generate(
                 row[rf.name] = _sample_raw(rf, profile, rng)
             for feat, dist in extra_numeric.items():
                 row[feat] = _sample_numeric(dist, rng)
+            # missingness: dropear features (→ None) para simular inputs esparsos
+            if spec.missing_rate > 0.0:
+                for key in list(row):
+                    if key != "label" and rng.random_sample() < spec.missing_rate:
+                        row[key] = None
             rows.append(row)
 
     df = pd.DataFrame(rows)

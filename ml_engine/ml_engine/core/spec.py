@@ -186,6 +186,10 @@ class SyntheticSpec:
     profiles: tuple[LabelProfile, ...]
     n_samples: int = 8000
     seed: int = 20260711
+    # Fracción de features que se dropean (→ faltante) por caso, para que el
+    # dato sintético se parezca a inputs reales ESPARSOS (Codex: stress con
+    # missingness). Evita sobre-confianza/sobre-abstención en inputs incompletos.
+    missing_rate: float = 0.0
 
     @property
     def labels(self) -> tuple[str, ...]:

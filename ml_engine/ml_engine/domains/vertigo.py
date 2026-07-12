@@ -93,6 +93,21 @@ def cardiogenic_cluster(row: Row) -> float:
     )
 
 
+def central_nystagmus_pattern(row: Row) -> float:
+    """Patrón de nistagmo CENTRAL: puro torsional/vertical o cambiante (A2/A3).
+
+    Reconcilia A↔B: el motor A trata estas direcciones como red flag central;
+    esta derivada las lleva al gate de peligro (feature de riesgo monótona) para
+    que B coincida. (El torsional POSICIONAL del VPPB va por dix_hallpike +
+    nystagmus_fatigable, no por nystagmus_direction.)
+    """
+    return (
+        1.0
+        if row.get("nystagmus_direction") in {"torsional_pure", "vertical_pure", "direction_changing"}
+        else 0.0
+    )
+
+
 # --------------------------------------------------------------------------
 # FeatureSpec — features que ve el modelo + derivadas + risk features
 # --------------------------------------------------------------------------
@@ -123,6 +138,10 @@ _RAW: tuple[RawFeature, ...] = (
     RawFeature("presyncope_syncope", "boolean"),
     RawFeature("palpitations", "boolean"),
     RawFeature("chest_pain", "boolean"),
+    # Fatigabilidad del nistagmo: signo BENIGNO (posicional/VPPB). Reconcilia
+    # A↔B: el torsional/vertical ESPONTÁNEO es central (A2); el de VPPB es
+    # posicional + fatigable (dix_hallpike + este flag), NO nystagmus_direction.
+    RawFeature("nystagmus_fatigable", "boolean"),
     # Numéricas
     RawFeature("nystagmus_latency_s", "numeric"),
     RawFeature("nystagmus_duration_s", "numeric"),
@@ -135,6 +154,7 @@ _DERIVED: tuple[DerivedFeature, ...] = (
     DerivedFeature("hints_central_pattern", hints_central_pattern),
     DerivedFeature("vascular_risk_count", vascular_risk_count),
     DerivedFeature("cardiogenic_cluster", cardiogenic_cluster),
+    DerivedFeature("central_nystagmus_pattern", central_nystagmus_pattern),
 )
 
 # Features de riesgo (monótonas +1 hacia peligro en el gate N0a). Todas numéricas.
@@ -143,6 +163,7 @@ _RISK: tuple[str, ...] = (
     "hints_central_pattern",
     "vascular_risk_count",
     "cardiogenic_cluster",
+    "central_nystagmus_pattern",
     "skew_deviation",
     "nystagmus_direction_changing_gaze",
 )
@@ -206,9 +227,12 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "trigger": _p(positional_head=0.90, spontaneous=0.10),
             "timing_pattern": _p(episodic_triggered=0.85, episodic_spontaneous=0.15),
             "onset": _p(sudden=0.70, gradual=0.30),
-            "dix_hallpike": _p(right_positive=0.40, left_positive=0.40, negative=0.10, not_done=0.10),
-            "nystagmus_direction": _p(torsional_pure=0.45, vertical_pure=0.25, mixed=0.20, none=0.10),
+            "dix_hallpike": _p(right_positive=0.42, left_positive=0.42, negative=0.08, not_done=0.08),
+            # VPPB NO tiene nistagmo espontáneo puro torsional/vertical (eso es
+            # CENTRAL, A2). Su nistagmo es posicional (dix_hallpike) + fatigable.
+            "nystagmus_direction": _p(none=0.60, mixed=0.25, horizontal=0.15),
         },
+        boolean={"nystagmus_fatigable": 0.85},  # signo benigno clave de VPPB
         numeric={"nystagmus_latency_s": NumericDist(5, 3, 1, 20)},
     ),
     LabelProfile(
@@ -217,9 +241,10 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "duration": _p(under_1min=0.6, seconds=0.35, minutes=0.05),
             "trigger": _p(positional_head=0.88, spontaneous=0.12),
             "timing_pattern": _p(episodic_triggered=0.85, episodic_spontaneous=0.15),
-            "nystagmus_direction": _p(horizontal=0.6, direction_changing=0.2, mixed=0.2),
+            "nystagmus_direction": _p(horizontal=0.7, mixed=0.2, none=0.1),
             "dix_hallpike": _p(negative=0.4, right_positive=0.25, left_positive=0.25, not_done=0.1),
         },
+        boolean={"nystagmus_fatigable": 0.7},  # posicional/benigno
         numeric={"nystagmus_latency_s": NumericDist(3, 2, 0, 12)},
     ),
     LabelProfile(
@@ -269,11 +294,14 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "duration": _p(over_24h_continuous=0.55, hours=0.30, days=0.15),
             "timing_pattern": _p(acute_continuous=0.72, episodic_spontaneous=0.28),
             "head_impulse": _p(normal=0.70, abnormal_corrective_saccade=0.15, not_done=0.15),
-            "nystagmus_direction": _p(direction_changing=0.50, vertical_pure=0.20, horizontal=0.15, mixed=0.15),
+            # Nistagmo espontáneo puro torsional/vertical o cambiante = CENTRAL (A2/A3).
+            "nystagmus_direction": _p(direction_changing=0.40, vertical_pure=0.20,
+                                      torsional_pure=0.20, horizontal=0.10, mixed=0.10),
         },
         boolean={
             "skew_deviation": 0.50, "nystagmus_direction_changing_gaze": 0.50,
             "truncal_ataxia_severe": 0.45, "headache_neck_pain_sudden_severe": 0.35,
+            "nystagmus_fatigable": 0.02,  # central NO es fatigable (persistente)
         },
         numeric={
             "age_years": NumericDist(66, 10, 30, 90),
@@ -296,7 +324,7 @@ _PROFILES: tuple[LabelProfile, ...] = (
     ),
 )
 
-SYNTHETIC = SyntheticSpec(profiles=_PROFILES, n_samples=8000, seed=SEED)
+SYNTHETIC = SyntheticSpec(profiles=_PROFILES, n_samples=8000, seed=SEED, missing_rate=0.15)
 
 # --------------------------------------------------------------------------
 # El Domain (bundle que instancia la plataforma)
