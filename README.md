@@ -32,9 +32,13 @@ CaseFeatures → RedFlagEngine ⟂ DifferentialEngine → ML?(track B) → groun
 
 ## Estado
 Backend + frontend + módulo Dix-Hallpike Tier 1 **implementados, testeados (INV-1..8) y
-verificados end-to-end**. Demo funcional. **Pendiente**: validación clínica del especialista
-(umbrales/pesos/HINTS provisionales — `docs/CLINICAL_VALIDATION_PENDING.md`) y track B (ML)
-opcional. Los resultados clínicos están validados **a nivel de arquitectura**, no clínicamente.
+verificados end-to-end**. Demo funcional. Los **rieles de seguridad** (invariantes A–E: red
+flags centrales, otras urgencias, contraindicaciones Dix-Hallpike, bloqueo de Epley, epistémicas
+— incl. A9/A10 defensivas) fueron revisados y **aceptados por un otorrino super-especialista**
+(T-CLIN ronda 1, `docs/CLINICAL_VALIDATION_PENDING.md`). **Pendiente (ronda 2)**: pesos
+diagnósticos del *differential*, umbral A7 (edad + riesgo vascular), mensajes al médico y revisión
+médico-legal. Track B (ML) opcional. El sistema **no está clínicamente validado como conjunto**
+(pesos provisionales, sin validación prospectiva).
 
 ## Quick start
 ```bash
@@ -53,7 +57,7 @@ cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run 
 - (El módulo carga assets de MediaPipe desde CDN; el *procesamiento* del video es local. No es un modo offline completo.)
 
 ## Limitaciones (honestas)
-- **No aprobado para uso clínico.** Umbrales y pesos son provisionales, pendientes de firma del otoneurólogo.
+- **No aprobado para uso clínico.** Los rieles de seguridad (invariantes A–E) están **firmados por el otorrino super-especialista** (r1); los **pesos diagnósticos y el umbral A7 siguen provisionales** (r2). Sin validación prospectiva.
 - El tracking de nistagmo es **experimental** (velocidades relativas, sin calibración a °/s validada); la torsión la **confirma el médico**.
 - El artefacto es un **FHIR R4 Clinical Case Bundle** (perfiles CL Core donde existen), **no un IPS-CL** completo.
 - La clasificación regulatoria (FDA) es una **hipótesis** dependiente del intended use, no una clasificación confirmada.
