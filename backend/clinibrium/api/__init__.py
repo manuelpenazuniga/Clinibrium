@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from clinibrium.api.decision import router as decision_router
 from clinibrium.api.evaluate import router as evaluate_router
+from clinibrium.api.what_would_change import router as wwcm_router
 
 
 def create_app() -> FastAPI:
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
 
     app.include_router(evaluate_router)
     app.include_router(decision_router)
+    app.include_router(wwcm_router)
 
     return app
 
