@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  CaseFeatures,
   CasePreset,
   PipelineResult,
   ReasonerOutput,
@@ -14,12 +13,12 @@ import {
   DIAGNOSIS_LABELS,
   FORCED_ACTION_LABELS,
   STAGE_ORDER,
-  URGENCY_LABELS,
   featureChips,
 } from "@/lib/labels";
 import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
 import PipelineRail from "./PipelineRail";
 import Onboarding from "./Onboarding";
+import WhatWouldChange from "./WhatWouldChange";
 
 const TOUR_SEEN_KEY = "clinibrium.tour.demo.v1";
 
@@ -34,12 +33,6 @@ export default function PipelineDemo() {
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [killReasoner, setKillReasoner] = useState(false);
-  const [forkResult, setForkResult] = useState<{
-    original: PipelineResult;
-    forked: PipelineResult;
-    changedFeature: string;
-  } | null>(null);
-  const [isForking, setIsForking] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -60,7 +53,6 @@ export default function PipelineDemo() {
     setStageData({});
     setResult(null);
     setError(null);
-    setForkResult(null);
   }, []);
 
   const handleSelectPreset = useCallback(
@@ -109,45 +101,6 @@ export default function PipelineDemo() {
       setActiveStage(null);
     }
   }, [selectedPreset, killReasoner, resetRun]);
-
-  const handleFork = useCallback(async () => {
-    if (!selectedPreset || !result) return;
-
-    setIsForking(true);
-    setForkResult(null);
-
-    const forkedFeatures: CaseFeatures = {
-      ...selectedPreset.features,
-      focal_signs: ["diplopia"],
-      truncal_ataxia_severe: true,
-    };
-
-    const controller = new AbortController();
-
-    try {
-      const [originalResult, forkedResult] = await Promise.all([
-        streamEvaluation(selectedPreset.features, {
-          killReasoner,
-          signal: controller.signal,
-        }),
-        streamEvaluation(forkedFeatures, {
-          killReasoner,
-          signal: controller.signal,
-        }),
-      ]);
-
-      setForkResult({
-        original: originalResult,
-        forked: forkedResult,
-        changedFeature: "focal_signs: [diplopia] · truncal_ataxia_severe: true",
-      });
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Error en fork clínico");
-    } finally {
-      setIsForking(false);
-    }
-  }, [selectedPreset, result, killReasoner]);
 
   const hasResults = result !== null || Object.keys(stageData).length > 0;
 
@@ -301,37 +254,8 @@ export default function PipelineDemo() {
 
           <ClinicalCaseReceipt result={result} />
 
-          <div className="fork-section">
-            <div className="fork-intro">
-              <h3>Fork clínico</h3>
-              <p>
-                Re-evalúa el mismo caso agregando una sola cosa: un signo focal
-                (diplopía + ataxia troncal). Ambas ramas corren por el pipeline
-                real — mira el riel disparar.
-              </p>
-            </div>
-            <button
-              className="btn-secondary"
-              onClick={handleFork}
-              disabled={isForking || !selectedPreset}
-              type="button"
-            >
-              {isForking ? (
-                <>
-                  <span className="spinner" /> Evaluando ambas ramas…
-                </>
-              ) : (
-                "Fork clínico: agregar signo focal"
-              )}
-            </button>
-          </div>
-
-          {forkResult && (
-            <ClinicalForkDisplay
-              original={forkResult.original}
-              forked={forkResult.forked}
-              changedFeature={forkResult.changedFeature}
-            />
+          {selectedPreset && (
+            <WhatWouldChange features={selectedPreset.features} />
           )}
         </section>
       )}
@@ -448,77 +372,3 @@ function StageDetailCard({
   );
 }
 
-function ForkCard({
-  title,
-  result,
-  escalated = false,
-}: {
-  title: string;
-  result: PipelineResult;
-  escalated?: boolean;
-}) {
-  const top = result.differential.candidates[0];
-  return (
-    <div className={`fork-card${escalated ? " fork-escalated" : ""}`}>
-      <h4>{title}</h4>
-      <span className={`urgency-badge ${result.urgency}`}>
-        {URGENCY_LABELS[result.urgency] ?? result.urgency}
-      </span>
-      {result.red_flag.red_flag_activa && (
-        <div className="fork-flag">Red flag activa</div>
-      )}
-      {result.applied_rails.length > 0 && (
-        <div className="fork-rails">
-          Rieles: {result.applied_rails.join(", ")}
-        </div>
-      )}
-      {top && (
-        <div className="fork-top">
-          Top: {DIAGNOSIS_LABELS[top.diagnosis] ?? top.diagnosis}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ClinicalForkDisplay({
-  original,
-  forked,
-  changedFeature,
-}: {
-  original: PipelineResult;
-  forked: PipelineResult;
-  changedFeature: string;
-}) {
-  const urgencyJumped = original.urgency !== forked.urgency;
-
-  return (
-    <div className="fork-display">
-      <h3 className="fork-title">Fork clínico — comparación lado a lado</h3>
-      <p className="fork-changed">
-        <strong>Cambio:</strong> <code>{changedFeature}</code>
-      </p>
-
-      <div className="fork-grid">
-        <ForkCard title="Caso original" result={original} />
-        <div className="fork-arrow" aria-hidden="true">
-          →
-        </div>
-        <ForkCard
-          title="Caso con signo focal"
-          result={forked}
-          escalated={urgencyJumped}
-        />
-      </div>
-
-      {urgencyJumped && (
-        <div className="fork-urgency-jump" role="status">
-          Salto de urgencia:{" "}
-          {URGENCY_LABELS[original.urgency] ?? original.urgency} →{" "}
-          {URGENCY_LABELS[forked.urgency] ?? forked.urgency}. Una sola variable
-          cambió y el riel disparó de verdad.
-        </div>
-      )}
-    </div>
-  );
-}

@@ -1350,6 +1350,109 @@ code {
 }
 
 /* ============================================================
+   WHAT WOULD CHANGE MY MIND? (contrafactual determinista)
+   ============================================================ */
+
+.wwcm {
+  margin-top: 1.25rem;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.wwcm-intro h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.wwcm-intro p {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--muted, #667085);
+  max-width: 56ch;
+}
+
+.wwcm-result {
+  margin-top: 1.25rem;
+}
+
+.wwcm-minimal {
+  padding: 0.9rem 1.1rem;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
+.wwcm-minimal-kicker {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--danger-deep);
+  margin-bottom: 0.35rem;
+}
+
+.wwcm-minimal p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.wwcm-none {
+  font-size: 0.92rem;
+  color: var(--muted, #667085);
+}
+
+.wwcm-table-wrap {
+  overflow-x: auto;
+}
+
+.wwcm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.wwcm-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--line);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted, #667085);
+}
+
+.wwcm-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.wwcm-table tr.wwcm-escalates td:first-child {
+  font-weight: 600;
+}
+
+.wwcm-urgency-cell {
+  white-space: nowrap;
+}
+
+.wwcm-arrow {
+  margin: 0 0.4rem;
+  color: var(--muted, #667085);
+}
+
+.wwcm-note {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted, #667085);
+}
+
+/* ============================================================
    URGENCIA (tríada de triage)
    ============================================================ */
 
