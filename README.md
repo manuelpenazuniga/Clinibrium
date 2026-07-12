@@ -60,5 +60,5 @@ cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run 
 
 ## Estructura
 - `backend/clinibrium/` — engines, rails, reasoner, orchestrator, audit, storage, fhir, api, grounding, ml_client, contracts.
-- `frontend/` — Next.js (demo + módulo Dix-Hallpike).
+- `frontend/` — Next.js: landing (`/`), pipeline demo (`/demo`, con onboarding) y módulo Dix-Hallpike (`/dix-hallpike`).
 - `docker-compose.yml` — `pgvector/pgvector:pg16`. · `check.sh` — gate.

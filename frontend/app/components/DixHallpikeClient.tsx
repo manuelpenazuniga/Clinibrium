@@ -26,14 +26,12 @@ import type {
   CaseFeatures,
   DixHallpikeResult,
   PipelineResult,
-  StageEvent,
   StageName,
 } from "@/lib/types";
+import { streamEvaluation } from "@/lib/api";
 import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
+import PipelineRail from "./PipelineRail";
 import PrivacyEgressMeter from "./PrivacyEgressMeter";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type TorsionDirection = "right_ear" | "left_ear" | "none" | "";
 type SourceMode = "webcam" | "file";
@@ -53,7 +51,9 @@ interface MediaPipeModules {
       options: unknown
     ) => Promise<FaceLandmarkerInstance>;
   };
-  FilesetResolver: new (basePath: string) => unknown;
+  FilesetResolver: {
+    forVisionTasks: (basePath: string) => Promise<unknown>;
+  };
 }
 
 async function loadMediaPipe(): Promise<MediaPipeModules> {
@@ -62,38 +62,6 @@ async function loadMediaPipe(): Promise<MediaPipeModules> {
     FaceLandmarker: vision.FaceLandmarker as unknown as MediaPipeModules["FaceLandmarker"],
     FilesetResolver: vision.FilesetResolver as unknown as MediaPipeModules["FilesetResolver"],
   };
-}
-
-function parseSSEEvents(
-  buffer: string
-): { events: StageEvent[]; remainder: string } {
-  const events: StageEvent[] = [];
-  let remaining = buffer;
-  while (true) {
-    const doubleNewline = remaining.indexOf("\n\n");
-    if (doubleNewline === -1) break;
-    const rawEvent = remaining.slice(0, doubleNewline);
-    remaining = remaining.slice(doubleNewline + 2);
-    let eventType = "";
-    let dataStr = "";
-    for (const line of rawEvent.split("\n")) {
-      if (line.startsWith("event: ")) eventType = line.slice(7).trim();
-      else if (line.startsWith("data: ")) dataStr += line.slice(6);
-      else if (line.startsWith("data:")) dataStr += line.slice(5);
-    }
-    if (eventType && dataStr) {
-      try {
-        events.push({
-          stage: eventType as StageName,
-          data: JSON.parse(dataStr) as unknown,
-          timestamp: Date.now(),
-        });
-      } catch {
-        /* skip */
-      }
-    }
-  }
-  return { events, remainder: remaining };
 }
 
 export default function DixHallpikeClient() {
@@ -144,8 +112,9 @@ export default function DixHallpikeClient() {
       try {
         const mp = await loadMediaPipe();
         if (cancelled) return;
-        const filesetResolver = new mp.FilesetResolver(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+        // El wasm del CDN debe calzar con la versión instalada del paquete JS.
+        const filesetResolver = await mp.FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
         );
         faceLandmarkerRef.current = await mp.FaceLandmarker.createFromOptions(
           filesetResolver,
@@ -208,7 +177,7 @@ export default function DixHallpikeClient() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.fillStyle = "#1a1a2e";
+    ctx.fillStyle = "#12202B";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const hist = velocityHistoryRef.current;
@@ -218,14 +187,15 @@ export default function DixHallpikeClient() {
     const scale = 2;
     const step = canvas.width / MAX_HISTORY;
 
-    ctx.strokeStyle = "#333";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, midY);
     ctx.lineTo(canvas.width, midY);
     ctx.stroke();
 
-    ctx.strokeStyle = "#ff4a4a";
+    // H = teal (patrón periférico típico) · V = rojo (vertical puro = signo central)
+    ctx.strokeStyle = "#4FC1BC";
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 0; i < hist.length; i++) {
@@ -236,7 +206,7 @@ export default function DixHallpikeClient() {
     }
     ctx.stroke();
 
-    ctx.strokeStyle = "#4a9eff";
+    ctx.strokeStyle = "#F0837A";
     ctx.beginPath();
     for (let i = 0; i < hist.length; i++) {
       const x = i * step;
@@ -246,10 +216,10 @@ export default function DixHallpikeClient() {
     }
     ctx.stroke();
 
-    ctx.fillStyle = "#ff4a4a";
+    ctx.fillStyle = "#4FC1BC";
     ctx.font = "12px monospace";
     ctx.fillText("H", 10, 16);
-    ctx.fillStyle = "#4a9eff";
+    ctx.fillStyle = "#F0837A";
     ctx.fillText("V", 30, 16);
   }, []);
 
@@ -472,40 +442,19 @@ export default function DixHallpikeClient() {
     setPipelineError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(features),
+      const final = await streamEvaluation(features, {
         signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("ReadableStream not supported");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = parseSSEEvents(buffer);
-        buffer = remainder;
-        for (const evt of events) {
+        onStage: (evt) => {
           if (evt.stage === "done") {
             setCompletedStages((p) => new Set(p).add("done"));
             setActiveStage(null);
-            setPipelineResult(evt.data as PipelineResult);
-          } else if (evt.stage === "error") {
-            const errData = evt.data as { error: string; message: string };
-            setPipelineError(`${errData.error}: ${errData.message}`);
-            setActiveStage(null);
-          } else {
+          } else if (evt.stage !== "error") {
             setCompletedStages((p) => new Set(p).add(evt.stage));
             setActiveStage(evt.stage);
           }
-        }
-      }
+        },
+      });
+      setPipelineResult(final);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setPipelineError(
@@ -541,27 +490,13 @@ export default function DixHallpikeClient() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [stopTracking]);
 
-  const STAGE_ORDER: { key: StageName; label: string }[] = [
-    { key: "redflag", label: "RedFlag" },
-    { key: "differential", label: "Differential" },
-    { key: "ml", label: "ML" },
-    { key: "reasoning", label: "Reasoning" },
-    { key: "rails", label: "Rails" },
-    { key: "done", label: "Done" },
-  ];
+  const sessionStarted =
+    tracking || framesProcessed > 0 || pipelineResult !== null;
 
   return (
     <div className="dix-hallpike">
-      <div className="dh-header">
-        <h2>Maniobra de Dix-Hallpike — Tier 1</h2>
-        <p className="dh-privacy">
-          <strong>Privacidad:</strong> Video procesado localmente; 0 frames a la red.
-          Solo features numéricas desidentificadas se envían al backend.
-        </p>
-      </div>
-
       {mpError && (
-        <div className="error-panel">
+        <div className="notice notice-error" role="alert">
           <strong>Error MediaPipe:</strong> {mpError}
         </div>
       )}
@@ -574,6 +509,35 @@ export default function DixHallpikeClient() {
 
       {mpReady && (
         <>
+          {!sessionStarted && (
+            <div className="dh-intro">
+              <div className="dh-intro-step">
+                <span className="dh-intro-number">1</span>
+                <h3>Fuente local</h3>
+                <p>
+                  Usa la webcam o carga un clip de la maniobra. El video no
+                  sale de este dispositivo.
+                </p>
+              </div>
+              <div className="dh-intro-step">
+                <span className="dh-intro-number">2</span>
+                <h3>Tracking on-device</h3>
+                <p>
+                  MediaPipe sigue el iris y estima velocidades relativas,
+                  frecuencia y fatigabilidad del nistagmo. Experimental.
+                </p>
+              </div>
+              <div className="dh-intro-step">
+                <span className="dh-intro-number">3</span>
+                <h3>El médico confirma</h3>
+                <p>
+                  La torsión no se auto-trackea: la confirmas tú, junto con el
+                  resultado de la maniobra, antes de evaluar.
+                </p>
+              </div>
+            </div>
+          )}
+
           <PrivacyEgressMeter
             framesProcessed={framesProcessed}
             features={sentFeatures}
@@ -611,7 +575,7 @@ export default function DixHallpikeClient() {
             )}
 
             {sourceMode === "file" && (
-              <label className="btn-primary" style={{ cursor: "pointer" }}>
+              <label className="btn-primary btn-file">
                 Cargar video
                 <input
                   ref={fileInputRef}
@@ -643,11 +607,8 @@ export default function DixHallpikeClient() {
 
           <div className="dh-video-area">
             <div className="dh-video-container">
-              <video ref={videoRef} playsInline muted style={{ maxWidth: "100%", borderRadius: 8 }} />
-              <canvas
-                ref={overlayRef}
-                style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
-              />
+              <video ref={videoRef} playsInline muted className="dh-video" />
+              <canvas ref={overlayRef} className="dh-overlay" />
               {tracking && (
                 <div className="dh-fps-badge">
                   {fps.toFixed(1)} FPS
@@ -655,12 +616,7 @@ export default function DixHallpikeClient() {
               )}
             </div>
 
-            <canvas
-              ref={graphRef}
-              width={600}
-              height={150}
-              style={{ borderRadius: 8, maxWidth: "100%", marginTop: 12 }}
-            />
+            <canvas ref={graphRef} width={600} height={150} className="dh-graph" />
           </div>
 
           <div className="dh-metrics">
@@ -767,17 +723,16 @@ export default function DixHallpikeClient() {
             </div>
 
             {confirmError && (
-              <div className="error-panel" style={{ marginTop: 8 }}>
+              <div className="notice notice-error dh-confirm-error" role="alert">
                 {confirmError}
               </div>
             )}
 
             <button
-              className="btn-primary"
+              className="btn-primary dh-confirm-submit"
               onClick={handleSendToPipeline}
               type="button"
               disabled={isStreaming || !tracking}
-              style={{ marginTop: 12 }}
             >
               {isStreaming ? (
                 <>
@@ -793,26 +748,14 @@ export default function DixHallpikeClient() {
             <div className="dh-pipeline-section">
               <h3>Pipeline de evaluación</h3>
 
-              <div className="pipeline-stages">
-                {STAGE_ORDER.map(({ key, label }) => {
-                  let cls = "stage-pill";
-                  if (completedStages.has(key)) cls += " completed";
-                  else if (activeStage === key) cls += " active";
-                  return (
-                    <span key={key} className={cls}>
-                      {(activeStage === key ||
-                        (key === "done" && completedStages.has("done"))) && (
-                        <span className="spinner" />
-                      )}
-                      {completedStages.has(key) && key !== "done" && "✓"}
-                      {label}
-                    </span>
-                  );
-                })}
-              </div>
+              <PipelineRail
+                completed={completedStages}
+                active={activeStage}
+                hasError={pipelineError !== null}
+              />
 
               {pipelineError && (
-                <div className="error-panel">
+                <div className="notice notice-error" role="alert">
                   <strong>Error:</strong> {pipelineError}
                 </div>
               )}
