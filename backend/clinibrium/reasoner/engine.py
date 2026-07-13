@@ -44,8 +44,9 @@ class _LLMReasoning(BaseModel):
 
 
 # Output-language directive appended ONLY for lang == "en". The Spanish
-# (default) prompt is left byte-identical to the recorded-demo version; the
-# whole prompt is written in Spanish, which implicitly yields Spanish output.
+# (default) prompt is the canonical baseline; the en path only appends this
+# directive. The whole prompt is written in Spanish, which implicitly yields
+# Spanish output.
 _EN_OUTPUT_DIRECTIVE = (
     "6. OUTPUT LANGUAGE: write your entire response (explanation, reconciliation,\n"
     "   suggested_next_steps) in ENGLISH. The ICVD criteria chunks are provided in\n"
@@ -56,7 +57,7 @@ _EN_OUTPUT_DIRECTIVE = (
 
 def _build_system_prompt(lang: str = "es") -> str:
     base = dedent("""\
-        Eres un asistente clínico otoneurológico (VertigoDx). Tu función es EXPLICAR
+        Eres un asistente clínico otoneurológico (Clinibrium). Tu función es EXPLICAR
         y CONCILIAR los hallazgos de los motores deterministas (RedFlagEngine,
         DifferentialEngine) con el contexto clínico estructurado provisto. NO eres un
         clasificador diagnóstico y NO fijas la urgencia vinculante del caso.

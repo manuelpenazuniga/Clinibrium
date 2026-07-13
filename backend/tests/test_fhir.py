@@ -29,6 +29,7 @@ Covers the acceptance criteria of T10:
 from __future__ import annotations
 
 import ast
+import copy
 import json
 import re
 from datetime import datetime, timezone
@@ -799,8 +800,8 @@ def test_bundle_en_reasoner_prose_is_tagged_with_language():
 
 
 def test_bundle_es_and_none_add_no_language_key_and_are_identical():
-    """Spanish/legacy paths add NO key → the default bundle is byte-identical
-    (the recorded demo depends on this)."""
+    """Spanish/legacy paths add NO key → the es and None bundles are
+    byte-identical to each other (relational invariant, not a golden)."""
     reasoning = _reasoning_sentinel_en()
     bundles = []
     for lang in (None, "es"):
@@ -820,3 +821,64 @@ def test_bundle_en_degraded_reasoner_is_not_tagged():
     ci = _resources_by_type(bundle)["ClinicalImpression"][0]
     assert "language" not in ci
     assert any("degradado" in n["text"] for n in ci["note"])
+
+
+# =========================================================================
+# 9. De-branding regression (AD-20): no "VertigoDx" codename in the
+#    backend-controlled strings; Questionnaire identity/version pinned.
+# =========================================================================
+
+_CODENAME_RE = re.compile(r"vertigo[\s_-]*dx", re.IGNORECASE)
+
+
+def test_questionnaire_identity_pinned():
+    """AD-20: the de-branded Questionnaire identity is pinned (canonical url,
+    name, version, date) and the QR echoes the same template version."""
+    bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
+    q = _resources_by_type(bundle)["Questionnaire"][0]
+    assert q["url"] == "urn:clinibrium:questionnaire:intake"
+    assert q["name"] == "ClinibriumIntakeQuestionnaire"
+    assert q["version"] == "0.2.0"
+    assert q["date"] == "2026-07-13"
+    qr = _resources_by_type(bundle)["QuestionnaireResponse"][0]
+    version_exts = [
+        e
+        for e in qr.get("extension", [])
+        if e["url"].endswith("/extension-questionnaire-version")
+    ]
+    assert len(version_exts) == 1
+    assert version_exts[0]["valueString"] == "0.2.0"
+
+
+def test_audit_event_site_no_codename():
+    """AD-20: AuditEvent.source.site drops the codename."""
+    bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
+    ae = _resources_by_type(bundle)["AuditEvent"][0]
+    assert ae["source"]["site"] == "Clinibrium backend"
+    assert not _CODENAME_RE.search(ae["source"]["site"])
+
+
+def test_static_bundle_strings_no_codename():
+    """AD-20 regression: the backend-controlled / deterministic strings of the
+    emitted Bundle carry no 'VertigoDx' codename.
+
+    Scope is explicit and narrow: the reasoner's free prose
+    (``ClinicalImpression.note`` — explanation / reconciliation /
+    suggested_next_steps) is variable model output and is NOT policed here.
+    """
+    reasoning = ReasonerOutput(
+        explanation="BPPV posterior típico; sin signos centrales.",
+        reconciliation="Concuerda con el diferencial determinista.",
+        suggested_next_steps=["Maniobra de reposición canalicular."],
+        model_used="claude-opus-4-8",
+    )
+    bundle = to_bundle(
+        _result_bppv(reasoning=reasoning), _features_bppv(), _audit()
+    )
+    scrubbed = copy.deepcopy(bundle)
+    for entry in scrubbed.get("entry", []):
+        res = entry.get("resource", {})
+        if res.get("resourceType") == "ClinicalImpression":
+            res.pop("note", None)
+    blob = json.dumps(scrubbed, ensure_ascii=False)
+    assert not _CODENAME_RE.search(blob)

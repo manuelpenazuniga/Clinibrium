@@ -152,9 +152,9 @@ _AUDIT_OUTCOME_SUCCESS: str = "0"
 _AUDIT_ACTION_EXECUTE: str = "E"
 
 # Questionnaire version (local constant — bump when the template changes).
-_QUESTIONNAIRE_VERSION: str = "0.1.0"
-_QUESTIONNAIRE_URL: str = "urn:clinibrium:questionnaire:vertigodx-intake"
-_QUESTIONNAIRE_DATE: str = "2026-07-10"
+_QUESTIONNAIRE_VERSION: str = "0.2.0"
+_QUESTIONNAIRE_URL: str = "urn:clinibrium:questionnaire:intake"
+_QUESTIONNAIRE_DATE: str = "2026-07-13"
 
 # Short display strings.
 _DISPLAY_EXAM: str = "Exam"
@@ -414,14 +414,14 @@ def _build_questionnaire(case_id: str) -> dict[str, Any]:
         meta={"profile": [_PROFILE_QUESTIONNAIRE]},
         url=_QUESTIONNAIRE_URL,
         version=_QUESTIONNAIRE_VERSION,
-        name="VertigoDxIntakeQuestionnaire",
-        title="Cuestionario clínico VertigoDx (intake)",
+        name="ClinibriumIntakeQuestionnaire",
+        title="Cuestionario clínico Clinibrium (intake)",
         status="draft",
         subjectType=["Patient"],
         date=_QUESTIONNAIRE_DATE,
         publisher="Clinibrium",
         description=(
-            "Cuestionario estructurado desidentificado del flujo VertigoDx. "
+            "Cuestionario estructurado desidentificado del flujo Clinibrium. "
             "Branching con enableWhen (SDC IG) para dos paths: "
             "Dix-Hallpike (si trigger=positional_head) y focal_signs "
             "(si onset=sudden)."
@@ -854,7 +854,7 @@ def _build_audit_event(
             }
         ],
         source={
-            "site": "Clinibrium backend (VertigoDx)",
+            "site": "Clinibrium backend",
             "observer": {"reference": subject_urn},
         },
         entity=[

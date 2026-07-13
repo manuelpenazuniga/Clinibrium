@@ -35,7 +35,7 @@ from clinibrium.reasoner import (
     pick_model,
     reason,
 )
-from clinibrium.reasoner.engine import _LLMReasoning
+from clinibrium.reasoner.engine import _build_system_prompt, _LLMReasoning
 
 # =========================================================================
 # INV-2 — privacy validator
@@ -500,3 +500,18 @@ def test_reasoner_output_grounding_refs_default() -> None:
         model_used="claude-haiku-4-5-20251001",
     )
     assert out.grounding_refs == []
+
+
+# =========================================================================
+# AD-20 — de-branding: the system prompt is branded "Clinibrium"
+# =========================================================================
+
+
+def test_reasoner_prompt_branding() -> None:
+    """AD-20: the system prompt identifies the assistant as 'Clinibrium', not
+    the old codename, and keeps the hard-rules anchors intact."""
+    prompt = _build_system_prompt("es")
+    assert "Clinibrium" in prompt
+    assert "vertigodx" not in prompt.lower()
+    assert "REGLAS DURAS" in prompt
+    assert "reasoner_suggested_urgency" in prompt
