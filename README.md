@@ -6,6 +6,7 @@
 
 Clinical decision support for the otoneurology clinic, engineered so that **the model never makes the safety call.**
 
+[![Live demo](https://img.shields.io/badge/▶%20Live%20demo-clinibrium.up.railway.app-16a34a?style=flat-square)](https://clinibrium.up.railway.app/)
 [![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757?style=flat-square)](https://claude.com/claude-code)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-1f6feb?style=flat-square)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-413%20passing-16a34a?style=flat-square)](#twelve-invariants-safety-you-can-run)
@@ -22,7 +23,7 @@ Clinical decision support for the otoneurology clinic, engineered so that **the 
 
 <div align="center">
 <img src="assets/demo-walkthrough.gif" alt="Clinibrium walkthrough: guided onboarding, the live evaluation pipeline streaming stage by stage, and the verifiable clinical receipt for a Ménière case, English UI" width="820">
-<br><em>A full run on a Ménière case: guided onboarding, the live evaluation pipeline streaming stage by stage, and the verifiable clinical receipt. English UI, from the public bilingual demo.</em>
+<br><em>A full run on a Ménière case: guided onboarding, the live evaluation pipeline streaming stage by stage, and the verifiable clinical receipt. English UI, from the <a href="https://clinibrium.up.railway.app/">live bilingual demo</a>.</em>
 </div>
 
 ## The problem
@@ -294,6 +295,10 @@ The demo does not claim its three properties. It **proves** them, in front of yo
 The whole interface is **bilingual (Spanish and English)** with a hard rule: language is a *presentation* parameter, never a computation one. It travels as a query parameter, never in the request body, so it never reaches `CaseFeatures`, the ML, or the privacy allowlist. The computation and the network payloads are byte-identical in both languages, and 18 parity tests pin that. The English UI is a careful clinical and technical translation (HINTS, acute vestibular syndrome, the ICVD nomenclature), so a non-Spanish-speaking reviewer sees the same rigor a Chilean clinician does.
 
 ### Quick start
+
+**Try it live (bilingual ES/EN): [clinibrium.up.railway.app](https://clinibrium.up.railway.app/)**
+
+Or run it yourself:
 
 ```bash
 # One command: sets up venvs / model / node_modules if missing, then launches
