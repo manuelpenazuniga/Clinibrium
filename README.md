@@ -44,10 +44,14 @@ prospective validation).
 
 ## Quick start
 ```bash
-# Backend (:8000). With ANTHROPIC_API_KEY the reasoner works; without it, graceful degradation.
+# One command — sets up venvs / model / node_modules if missing, then launches
+# ml_engine (:8001) + backend (:8000, DEMO_MODE) + frontend (:3000). Ctrl-C stops all.
+ANTHROPIC_API_KEY=<key> ./demo/start.sh   # key optional; reasoner degrades gracefully without it
+# → http://localhost:3000/demo
+
+# Or manually:
 cd backend && python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ANTHROPIC_API_KEY=<key> .venv/bin/python -m uvicorn clinibrium.api:app --port 8000
-# Frontend (:3000)
 cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 # Full gate: ./check.sh
 ```
