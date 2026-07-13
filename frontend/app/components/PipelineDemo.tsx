@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  CaseFeatures,
   CasePreset,
   PipelineResult,
   ReasonerOutput,
@@ -15,14 +16,24 @@ import { useLanguage } from "./LanguageProvider";
 import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
 import PipelineRail from "./PipelineRail";
 import Onboarding from "./Onboarding";
+import RealCaseForm from "./RealCaseForm";
 import WelcomeOnboarding from "./WelcomeOnboarding";
 import WhatWouldChange from "./WhatWouldChange";
 
 const WELCOME_SEEN_KEY = "clinibrium.welcome.v1";
 
+/** "presets" = guided demo cases; "real" = physician-entered real case. */
+type CaseMode = "presets" | "real";
+
 export default function PipelineDemo() {
   const { lang, t } = useLanguage();
+  const [mode, setMode] = useState<CaseMode>("presets");
   const [selectedPreset, setSelectedPreset] = useState<CasePreset | null>(null);
+  const [realFeatures, setRealFeatures] = useState<CaseFeatures>({});
+  // Snapshot of what was actually evaluated — the receipt and counterfactuals
+  // must refer to the sent payload, not to a form edited afterwards.
+  const [evaluatedFeatures, setEvaluatedFeatures] =
+    useState<CaseFeatures | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [completedStages, setCompletedStages] = useState<Set<StageName>>(
     new Set()
@@ -70,8 +81,26 @@ export default function PipelineDemo() {
     [resetRun]
   );
 
+  const handleSelectMode = useCallback(
+    (next: CaseMode) => {
+      if (next === mode) return;
+      setMode(next);
+      resetRun();
+    },
+    [mode, resetRun]
+  );
+
+  // The features the pipeline would evaluate right now, per mode. Null while
+  // there is nothing to send (no preset picked / empty form).
+  const activeFeatures: CaseFeatures | null =
+    mode === "real"
+      ? Object.keys(realFeatures).length > 0
+        ? realFeatures
+        : null
+      : (selectedPreset?.features ?? null);
+
   const handleEvaluate = useCallback(async () => {
-    if (!selectedPreset) return;
+    if (!activeFeatures) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -79,6 +108,7 @@ export default function PipelineDemo() {
 
     setIsStreaming(true);
     resetRun();
+    setEvaluatedFeatures(activeFeatures);
 
     // Bring the live pipeline into view once it has rendered (next frame).
     requestAnimationFrame(() => {
@@ -91,7 +121,7 @@ export default function PipelineDemo() {
     });
 
     try {
-      const final = await streamEvaluation(selectedPreset.features, {
+      const final = await streamEvaluation(activeFeatures, {
         killReasoner,
         lang,
         signal: controller.signal,
@@ -118,7 +148,7 @@ export default function PipelineDemo() {
       setIsStreaming(false);
       setActiveStage(null);
     }
-  }, [selectedPreset, killReasoner, lang, resetRun]);
+  }, [activeFeatures, killReasoner, lang, resetRun]);
 
   const hasResults = result !== null || Object.keys(stageData).length > 0;
   // Show the rail as soon as evaluation starts, with every stage pending —
@@ -142,41 +172,69 @@ export default function PipelineDemo() {
 
       <section className="demo-step">
         <h2 className="step-title">
-          <span className="step-marker">{t.demo.step1}</span> {t.demo.step1Title}
+          <span className="step-marker">{t.demo.step1}</span>{" "}
+          {mode === "real" ? t.demo.step1TitleReal : t.demo.step1Title}
         </h2>
-        <div className="preset-grid" data-tour="presets">
-          {CASE_PRESETS.map((preset) => {
-            const chips = featureChips(preset.features, t);
-            const featureCount = Object.keys(preset.features).length;
-            const presetCopy =
-              t.presets[preset.id as keyof Dict["presets"]] ?? {
-                name: preset.name,
-                description: preset.description,
-              };
-            return (
-              <button
-                key={preset.id}
-                className={`preset-card${selectedPreset?.id === preset.id ? " selected" : ""}`}
-                onClick={() => handleSelectPreset(preset)}
-                type="button"
-                aria-pressed={selectedPreset?.id === preset.id}
-              >
-                <h3>{presetCopy.name}</h3>
-                <p>{presetCopy.description}</p>
-                <div className="preset-chips">
-                  {chips.map((chip) => (
-                    <span key={chip} className="chip">
-                      {chip}
-                    </span>
-                  ))}
-                </div>
-                <span className="preset-meta">
-                  {featureCount} {t.demo.presetFeatures}
-                </span>
-              </button>
-            );
-          })}
+
+        <div className="case-mode-toggle" role="group" aria-label={t.demo.modeAria}>
+          <button
+            type="button"
+            className={`case-mode-option${mode === "presets" ? " selected" : ""}`}
+            aria-pressed={mode === "presets"}
+            onClick={() => handleSelectMode("presets")}
+          >
+            {t.demo.modePresets}
+          </button>
+          <button
+            type="button"
+            className={`case-mode-option${mode === "real" ? " selected" : ""}`}
+            aria-pressed={mode === "real"}
+            onClick={() => handleSelectMode("real")}
+          >
+            {t.demo.modeReal}
+          </button>
         </div>
+
+        {mode === "presets" ? (
+          <div className="preset-grid" data-tour="presets">
+            {CASE_PRESETS.map((preset) => {
+              const chips = featureChips(preset.features, t);
+              const featureCount = Object.keys(preset.features).length;
+              const presetCopy =
+                t.presets[preset.id as keyof Dict["presets"]] ?? {
+                  name: preset.name,
+                  description: preset.description,
+                };
+              return (
+                <button
+                  key={preset.id}
+                  className={`preset-card${selectedPreset?.id === preset.id ? " selected" : ""}`}
+                  onClick={() => handleSelectPreset(preset)}
+                  type="button"
+                  aria-pressed={selectedPreset?.id === preset.id}
+                >
+                  <h3>{presetCopy.name}</h3>
+                  <p>{presetCopy.description}</p>
+                  <div className="preset-chips">
+                    {chips.map((chip) => (
+                      <span key={chip} className="chip">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="preset-meta">
+                    {featureCount} {t.demo.presetFeatures}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            <p className="rc-hint">{t.realCase.hint}</p>
+            <RealCaseForm features={realFeatures} onChange={setRealFeatures} />
+          </>
+        )}
 
         <div className="evaluate-controls" data-tour="controls">
           <label className="switch" data-tour="kill">
@@ -190,7 +248,7 @@ export default function PipelineDemo() {
           </label>
           <button
             className="btn-primary"
-            disabled={!selectedPreset || isStreaming}
+            disabled={!activeFeatures || isStreaming}
             onClick={handleEvaluate}
             type="button"
           >
@@ -204,8 +262,10 @@ export default function PipelineDemo() {
           </button>
         </div>
 
-        {!selectedPreset && !hasResults && (
-          <p className="empty-hint">{t.demo.emptyHint}</p>
+        {!activeFeatures && !hasResults && (
+          <p className="empty-hint">
+            {mode === "real" ? t.realCase.noFeatures : t.demo.emptyHint}
+          </p>
         )}
 
         {killReasoner && (
@@ -278,9 +338,7 @@ export default function PipelineDemo() {
 
           <ClinicalCaseReceipt result={result} />
 
-          {selectedPreset && (
-            <WhatWouldChange features={selectedPreset.features} />
-          )}
+          {evaluatedFeatures && <WhatWouldChange features={evaluatedFeatures} />}
         </section>
       )}
     </div>
