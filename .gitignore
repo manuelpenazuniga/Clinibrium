@@ -14,13 +14,10 @@ backend/.env
 node_modules/
 .next/
 
-# Bus de consultas al arquitecto (transitorio)
-.agents/
-
 # Next.js
 next-env.d.ts
 *.tsbuildinfo
 
-# Audit log local (fallback JSONL append-only; runtime)
+# Local audit log (append-only JSONL fallback; runtime)
 audit_events.jsonl
 *.jsonl
