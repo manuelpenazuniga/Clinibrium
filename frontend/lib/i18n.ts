@@ -463,6 +463,7 @@ const es = {
     noteMid: " lo que sale a la red: ",
     noteBytes: " bytes de features numéricas desidentificadas, ",
     noteFieldsSuffix: " campos de video/frame, con hash SHA-256 verificable. No es «confiá en nosotros» — es observable (INV-2).",
+    collapsedHint: "0 frames salen del dispositivo — abrir para inspeccionar el payload exacto",
   },
 
   dix: {
@@ -472,20 +473,39 @@ const es = {
       "El video se procesa localmente con MediaPipe — 0 frames cruzan la red. Solo features numéricas desidentificadas llegan al backend, y la torsión la confirma el médico.",
     mpError: "Error MediaPipe:",
     loadingMp: "Cargando MediaPipe FaceLandmarker...",
-    intro1Title: "Fuente local",
-    intro1Body: "Usa la webcam o carga un clip de la maniobra. El video no sale de este dispositivo.",
-    intro2Title: "Tracking on-device",
-    intro2Body:
-      "MediaPipe sigue el iris y estima velocidades relativas, frecuencia y fatigabilidad del nistagmo. Experimental.",
-    intro3Title: "El médico confirma",
-    intro3Body:
-      "La torsión no se auto-trackea: la confirmas tú, junto con el resultado de la maniobra, antes de evaluar.",
     webcam: "Webcam",
     localVideo: "Video local",
     startWebcam: "Iniciar webcam",
     loadVideo: "Cargar video",
     stop: "Detener",
     reset: "Reset",
+    remeasure: "Nueva medición",
+    remeasureTitle:
+      "Reinicia las métricas sin apagar la cámara — útil para repetir la maniobra del otro lado",
+    camLabel: "Cámara",
+    camDefault: "Cámara predeterminada",
+    camFallback: "Cámara",
+    resLabel: "Resolución",
+    faceOk: "Iris detectados",
+    faceMissing: "Sin rostro — centra al paciente en el encuadre",
+    guideTitle: "Guía paso a paso",
+    guideIntro:
+      "Protocolo sugerido para registrar la maniobra de Dix-Hallpike con tracking on-device. El paso activo se resalta según el estado de la sesión.",
+    g1Title: "Prepara cámara y paciente",
+    g1Body:
+      "Elige la cámara y la resolución (HD recomendado). Paciente sentado en la camilla, rostro iluminado de frente (evita contraluz), a 50–80 cm de la cámara y con los ojos bien visibles (sin lentes oscuros).",
+    g2Title: "Inicia y verifica el tracking",
+    g2Body:
+      "Pulsa «Iniciar webcam» y confirma el indicador «Iris detectados»: deben verse los dos puntos rojos sobre las pupilas. Si no aparecen: más luz, acerca al paciente o sube la resolución.",
+    g3Title: "Ejecuta la maniobra",
+    g3Body:
+      "Gira la cabeza del paciente 45° hacia el lado a explorar y recuéstalo con rapidez en decúbito supino, con la cabeza colgando ~20–30° bajo el plano de la camilla. Ojos abiertos. Observa 30–60 s las métricas: latencia, batidas, dirección y fatigabilidad.",
+    g4Title: "Detén y confirma los hallazgos",
+    g4Body:
+      "Pulsa «Detener» al terminar el episodio. Con «Nueva medición» repites la maniobra (p. ej., del otro lado) sin reiniciar la cámara. Luego registra la torsión observada y el resultado de la maniobra: esa confirmación es tuya, el tracker no la decide.",
+    g5Title: "Evalúa con el pipeline",
+    g5Body:
+      "Pulsa «Confirmar y evaluar». Solo salen features numéricas desidentificadas: red flags deterministas → reglas ICVD → Claude explica → rieles. La decisión final es siempre del médico.",
     metricFps: "FPS",
     metricVelH: "Vel. H (rel.)",
     metricVelV: "Vel. V (rel.)",
@@ -1067,6 +1087,7 @@ const en: typeof es = {
     noteMid: " what leaves to the network: ",
     noteBytes: " bytes of de-identified numeric features, ",
     noteFieldsSuffix: " video/frame fields, with a verifiable SHA-256 hash. It is not «trust us» — it is observable (INV-2).",
+    collapsedHint: "0 frames leave the device — open to inspect the exact payload",
   },
 
   dix: {
@@ -1076,20 +1097,39 @@ const en: typeof es = {
       "The video is processed locally with MediaPipe — 0 frames cross the network. Only de-identified numeric features reach the backend, and torsion is confirmed by the physician.",
     mpError: "MediaPipe error:",
     loadingMp: "Loading MediaPipe FaceLandmarker...",
-    intro1Title: "Local source",
-    intro1Body: "Use the webcam or load a clip of the maneuver. The video does not leave this device.",
-    intro2Title: "On-device tracking",
-    intro2Body:
-      "MediaPipe tracks the iris and estimates relative velocities, frequency and fatigability of the nystagmus. Experimental.",
-    intro3Title: "The physician confirms",
-    intro3Body:
-      "Torsion is not auto-tracked: you confirm it, along with the maneuver result, before evaluating.",
     webcam: "Webcam",
     localVideo: "Local video",
     startWebcam: "Start webcam",
     loadVideo: "Load video",
     stop: "Stop",
     reset: "Reset",
+    remeasure: "New measurement",
+    remeasureTitle:
+      "Resets the metrics without turning off the camera — useful to repeat the maneuver on the other side",
+    camLabel: "Camera",
+    camDefault: "Default camera",
+    camFallback: "Camera",
+    resLabel: "Resolution",
+    faceOk: "Iris detected",
+    faceMissing: "No face — center the patient in the frame",
+    guideTitle: "Step-by-step guide",
+    guideIntro:
+      "Suggested protocol to record the Dix-Hallpike maneuver with on-device tracking. The active step is highlighted based on the session state.",
+    g1Title: "Prepare camera and patient",
+    g1Body:
+      "Choose the camera and resolution (HD recommended). Patient seated on the table, face lit from the front (avoid backlight), 50–80 cm from the camera and with both eyes clearly visible (no dark glasses).",
+    g2Title: "Start and verify tracking",
+    g2Body:
+      "Press “Start webcam” and confirm the “Iris detected” indicator: the two red dots must be visible over the pupils. If they don't appear: add light, bring the patient closer or raise the resolution.",
+    g3Title: "Perform the maneuver",
+    g3Body:
+      "Turn the patient's head 45° toward the tested side and lay them down quickly to supine, head hanging ~20–30° below the table plane. Eyes open. Watch the metrics for 30–60 s: latency, beats, direction and fatigability.",
+    g4Title: "Stop and confirm the findings",
+    g4Body:
+      "Press “Stop” when the episode ends. “New measurement” repeats the maneuver (e.g., on the other side) without restarting the camera. Then record the observed torsion and the maneuver result: that confirmation is yours, the tracker does not decide it.",
+    g5Title: "Evaluate with the pipeline",
+    g5Body:
+      "Press “Confirm and evaluate”. Only de-identified numeric features leave: deterministic red flags → ICVD rules → Claude explains → rails. The final decision always belongs to the physician.",
     metricFps: "FPS",
     metricVelH: "Vel. H (rel.)",
     metricVelV: "Vel. V (rel.)",

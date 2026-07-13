@@ -38,6 +38,16 @@ import PrivacyEgressMeter from "./PrivacyEgressMeter";
 type TorsionDirection = "right_ear" | "left_ear" | "none" | "";
 type SourceMode = "webcam" | "file";
 
+const RESOLUTIONS = [
+  { value: "640x480", label: "640×480 (VGA)" },
+  { value: "1280x720", label: "1280×720 (HD)" },
+  { value: "1920x1080", label: "1920×1080 (Full HD)" },
+] as const;
+
+// If the face drops out for less than this, keep the "iris detected" badge
+// steady instead of flickering on single missed frames.
+const FACE_LOST_MS = 600;
+
 interface FaceLandmarkerInstance {
   detectForVideo: (
     video: HTMLVideoElement,
@@ -77,8 +87,23 @@ export default function DixHallpikeClient() {
   const faceLandmarkerRef = useRef<FaceLandmarkerInstance | null>(null);
   const runningRef = useRef(false);
   const rafRef = useRef<number>(0);
+  // Chrome fully suspends requestAnimationFrame when the window is occluded
+  // (visibilityState becomes "hidden" even with focus). This timer is a slow
+  // heartbeat so the session degrades to ~1-2 fps instead of freezing.
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const startTimeRef = useRef(0);
   const frameCountRef = useRef(0);
+  // MediaPipe VIDEO mode requires strictly increasing timestamps across the
+  // whole FaceLandmarker lifetime — including webcam restarts and file
+  // replays, where video.currentTime resets to 0. A monotonic clock plus this
+  // guard is what keeps detectForVideo from throwing (which kills the rAF loop).
+  const lastTimestampRef = useRef(0);
+  const lastVideoTimeRef = useRef(-1);
+  // Rolling window of recent frame arrival times → live FPS that recovers
+  // after a stall (a lifetime average would stay sunk forever).
+  const frameTimesRef = useRef<number[]>([]);
+  const lastFaceTimeRef = useRef(0);
+  const faceSeenRef = useRef(false);
   const irisHistoryRef = useRef<Array<{ pos: { x: number; y: number }; time: number }>>([]);
   const velocityHistoryRef = useRef<Velocity[]>([]);
   const beatStateRef = useRef<BeatState>(createBeatState());
@@ -86,7 +111,12 @@ export default function DixHallpikeClient() {
   const [mpReady, setMpReady] = useState(false);
   const [mpError, setMpError] = useState<string | null>(null);
   const [sourceMode, setSourceMode] = useState<SourceMode>("webcam");
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraId, setCameraId] = useState("");
+  const [resolution, setResolution] = useState<string>("1280x720");
+  const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
   const [tracking, setTracking] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
   const [fps, setFps] = useState(0);
   const [velH, setVelH] = useState(0);
   const [velV, setVelV] = useState(0);
@@ -150,6 +180,23 @@ export default function DixHallpikeClient() {
     };
   }, []);
 
+  const refreshCameras = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setCameras(devices.filter((dev) => dev.kind === "videoinput"));
+    } catch {
+      // enumerateDevices unavailable (insecure context) — selector stays empty
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCameras();
+    navigator.mediaDevices?.addEventListener?.("devicechange", refreshCameras);
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.("devicechange", refreshCameras);
+    };
+  }, [refreshCameras]);
+
   const drawOverlay = useCallback(
     (landmarks: Array<{ x: number; y: number }>, vw: number, vh: number) => {
       const canvas = overlayRef.current;
@@ -179,6 +226,13 @@ export default function DixHallpikeClient() {
     },
     []
   );
+
+  const clearOverlay = useCallback(() => {
+    const canvas = overlayRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx?.clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
 
   const drawGraph = useCallback(() => {
     const canvas = graphRef.current;
@@ -233,19 +287,45 @@ export default function DixHallpikeClient() {
 
   const processFrame = useCallback(() => {
     if (!runningRef.current) return;
+    // Single-chain guarantee: whichever trigger fired (rAF or heartbeat),
+    // cancel the other pending one before doing any work.
+    cancelAnimationFrame(rafRef.current);
+    clearTimeout(fallbackTimerRef.current);
     const video = videoRef.current;
     const fl = faceLandmarkerRef.current;
     if (!video || !fl) return;
 
     const currentTime = (performance.now() - startTimeRef.current) / 1000;
 
-    if (video.readyState >= 2) {
-      const timestampMs =
-        video.currentTime > 0 ? video.currentTime * 1000 : performance.now();
-      const result = fl.detectForVideo(video, timestampMs);
+    // Only run detection on NEW video frames: rAF ticks faster than the
+    // camera delivers frames, and re-detecting the same frame both wastes GPU
+    // and (worse) would send MediaPipe a non-increasing timestamp.
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
+      lastVideoTimeRef.current = video.currentTime;
 
-      if (result.faceLandmarks && result.faceLandmarks.length > 0) {
-        const face = result.faceLandmarks[0];
+      const overlay = overlayRef.current;
+      if (
+        overlay &&
+        video.videoWidth > 0 &&
+        (overlay.width !== video.videoWidth || overlay.height !== video.videoHeight)
+      ) {
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+      }
+
+      const timestampMs = Math.max(performance.now(), lastTimestampRef.current + 1);
+      lastTimestampRef.current = timestampMs;
+
+      let face: Array<{ x: number; y: number }> | null = null;
+      try {
+        const result = fl.detectForVideo(video, timestampMs);
+        face = result.faceLandmarks?.[0] ?? null;
+      } catch {
+        // One bad frame must never kill the tracking loop.
+      }
+
+      if (face) {
+        lastFaceTimeRef.current = performance.now();
         const leftIris = getIrisCenter(face, LEFT_IRIS_INDICES);
         const rightIris = getIrisCenter(face, RIGHT_IRIS_INDICES);
         const avgIris = {
@@ -273,15 +353,34 @@ export default function DixHallpikeClient() {
 
         detectBeat(velocity, currentTime, beatStateRef.current, velocityHistoryRef.current);
         drawOverlay(face, video.videoWidth, video.videoHeight);
+      } else {
+        clearOverlay();
       }
       frameCountRef.current++;
       if (frameCountRef.current % 10 === 0) {
         setFramesProcessed(frameCountRef.current);
       }
+      const ft = frameTimesRef.current;
+      ft.push(performance.now());
+      if (ft.length > 30) ft.shift();
     }
 
-    const elapsed = (performance.now() - startTimeRef.current) / 1000;
-    setFps(elapsed > 0 ? frameCountRef.current / elapsed : 0);
+    const faceSeen =
+      performance.now() - lastFaceTimeRef.current < FACE_LOST_MS &&
+      lastFaceTimeRef.current > 0;
+    if (faceSeen !== faceSeenRef.current) {
+      faceSeenRef.current = faceSeen;
+      setFaceDetected(faceSeen);
+    }
+
+    const ft = frameTimesRef.current;
+    const stalled =
+      ft.length === 0 || performance.now() - ft[ft.length - 1] > 1500;
+    setFps(
+      !stalled && ft.length >= 2
+        ? ((ft.length - 1) * 1000) / (ft[ft.length - 1] - ft[0])
+        : 0
+    );
 
     const vh = velocityHistoryRef.current;
     if (vh.length > 0) {
@@ -304,59 +403,95 @@ export default function DixHallpikeClient() {
 
     drawGraph();
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [drawOverlay, drawGraph]);
+    fallbackTimerRef.current = setTimeout(processFrame, 500);
+  }, [drawOverlay, drawGraph, clearOverlay]);
+
+  const resetMeasurement = useCallback(() => {
+    irisHistoryRef.current = [];
+    velocityHistoryRef.current = [];
+    beatStateRef.current = createBeatState();
+    startTimeRef.current = performance.now();
+    frameCountRef.current = 0;
+    lastVideoTimeRef.current = -1;
+    frameTimesRef.current = [];
+    setFps(0);
+    setVelH(0);
+    setVelV(0);
+    setFreq(0);
+    setDirection("-");
+    setLatency(null);
+    setBeats(0);
+    setFatigable("-");
+    setDuration(null);
+    setFramesProcessed(0);
+    setPipelineResult(null);
+    setPipelineError(null);
+    setCompletedStages(new Set());
+    setSentFeatures(null);
+  }, []);
 
   const stopTracking = useCallback(() => {
     runningRef.current = false;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    clearTimeout(fallbackTimerRef.current);
     const video = videoRef.current;
     if (video?.srcObject) {
-      (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      (video.srcObject as MediaStream).getTracks().forEach((tr) => tr.stop());
       video.srcObject = null;
     }
     if (video?.src && video.src.startsWith("blob:")) {
       URL.revokeObjectURL(video.src);
-      video.src = "";
+      video.removeAttribute("src");
+      video.load();
     }
-    const canvas = overlayRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    clearOverlay();
+    // Flush the throttled frame counter so "confirm & evaluate" stays enabled.
+    setFramesProcessed(frameCountRef.current);
+    faceSeenRef.current = false;
+    lastFaceTimeRef.current = 0;
+    setFaceDetected(false);
     setTracking(false);
-  }, []);
+    setVideoDims(null);
+  }, [clearOverlay]);
+
+  const beginSession = useCallback(() => {
+    resetMeasurement();
+    runningRef.current = true;
+    setTracking(true);
+    processFrame();
+  }, [resetMeasurement, processFrame]);
 
   const startWebcam = useCallback(async () => {
     const video = videoRef.current;
     const fl = faceLandmarkerRef.current;
     if (!video || !fl) return;
+    setMpError(null);
+    stopTracking();
+    const [w, h] = resolution.split("x").map(Number);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: "user" },
+        audio: false,
+        video: {
+          width: { ideal: w },
+          height: { ideal: h },
+          ...(cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "user" }),
+        },
       });
       video.srcObject = stream;
       await video.play();
-      const overlay = overlayRef.current;
-      if (overlay) {
-        overlay.width = video.videoWidth;
-        overlay.height = video.videoHeight;
-      }
-      runningRef.current = true;
-      startTimeRef.current = performance.now();
-      frameCountRef.current = 0;
-      irisHistoryRef.current = [];
-      velocityHistoryRef.current = [];
-      beatStateRef.current = createBeatState();
-      setTracking(true);
-      setPipelineResult(null);
-      setPipelineError(null);
-      setFramesProcessed(0);
-      setSentFeatures(null);
-      processFrame();
+      setVideoDims(
+        video.videoWidth > 0 ? { w: video.videoWidth, h: video.videoHeight } : null
+      );
+      // Labels only populate after permission; also reflect the camera the
+      // browser actually picked so the selector shows the truth.
+      const settings = stream.getVideoTracks()[0]?.getSettings();
+      if (!cameraId && settings?.deviceId) setCameraId(settings.deviceId);
+      refreshCameras();
+      beginSession();
     } catch (err) {
       setMpError(err instanceof Error ? err.message : String(err));
     }
-  }, [processFrame]);
+  }, [resolution, cameraId, stopTracking, refreshCameras, beginSession]);
 
   const handleFileLoad = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -364,32 +499,39 @@ export default function DixHallpikeClient() {
       if (!file) return;
       const video = videoRef.current;
       if (!video) return;
+      setMpError(null);
+      stopTracking();
       const url = URL.createObjectURL(file);
       video.src = url;
       video.onloadedmetadata = () => {
-        const overlay = overlayRef.current;
-        if (overlay) {
-          overlay.width = video.videoWidth;
-          overlay.height = video.videoHeight;
-        }
+        setVideoDims(
+          video.videoWidth > 0 ? { w: video.videoWidth, h: video.videoHeight } : null
+        );
       };
-      video.play().then(() => {
-        runningRef.current = true;
-        startTimeRef.current = performance.now();
-        frameCountRef.current = 0;
-        irisHistoryRef.current = [];
-        velocityHistoryRef.current = [];
-        beatStateRef.current = createBeatState();
-        setTracking(true);
-        setPipelineResult(null);
-        setPipelineError(null);
-        setFramesProcessed(0);
-        setSentFeatures(null);
-        processFrame();
-      });
+      video
+        .play()
+        .then(() => {
+          beginSession();
+        })
+        .catch((err) => {
+          setMpError(err instanceof Error ? err.message : String(err));
+        });
+      // Allow re-selecting the same file for a fresh run.
+      e.target.value = "";
     },
-    [processFrame]
+    [stopTracking, beginSession]
   );
+
+  const handleVideoEnded = useCallback(() => {
+    // File playback finished: freeze metrics, keep the session confirmable.
+    runningRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    clearTimeout(fallbackTimerRef.current);
+    setFramesProcessed(frameCountRef.current);
+    setTracking(false);
+    setFaceDetected(false);
+    faceSeenRef.current = false;
+  }, []);
 
   const buildCaseFeatures = useCallback((): CaseFeatures => {
     const nystagmusFeatures = toNystagmusFeatures(
@@ -477,30 +619,31 @@ export default function DixHallpikeClient() {
 
   const handleReset = useCallback(() => {
     stopTracking();
-    irisHistoryRef.current = [];
-    velocityHistoryRef.current = [];
-    beatStateRef.current = createBeatState();
-    setFps(0);
-    setVelH(0);
-    setVelV(0);
-    setFreq(0);
-    setDirection("-");
-    setLatency(null);
-    setBeats(0);
-    setFatigable("-");
-    setDuration(null);
+    resetMeasurement();
     setTorsion("");
     setDixResult("");
     setConfirmError(null);
-    setPipelineResult(null);
-    setPipelineError(null);
-    setFramesProcessed(0);
-    setSentFeatures(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [stopTracking]);
+  }, [stopTracking, resetMeasurement]);
 
-  const sessionStarted =
-    tracking || framesProcessed > 0 || pipelineResult !== null;
+  const hasMeasurement = framesProcessed > 0 || tracking;
+
+  // Which guide step the physician is on, derived from live session state.
+  const guideStep = (() => {
+    if (isStreaming || pipelineResult) return 5;
+    if (!tracking && framesProcessed === 0) return 1;
+    if (tracking && !faceDetected) return 2;
+    if (tracking) return 3;
+    return torsion && dixResult ? 5 : 4;
+  })();
+
+  const guideSteps = [
+    { title: d.g1Title, body: d.g1Body },
+    { title: d.g2Title, body: d.g2Body },
+    { title: d.g3Title, body: d.g3Body },
+    { title: d.g4Title, body: d.g4Body },
+    { title: d.g5Title, body: d.g5Body },
+  ];
 
   return (
     <div className="dix-hallpike">
@@ -518,248 +661,323 @@ export default function DixHallpikeClient() {
 
       {mpReady && (
         <>
-          {!sessionStarted && (
-            <div className="dh-intro">
-              <div className="dh-intro-step">
-                <span className="dh-intro-number">1</span>
-                <h3>{d.intro1Title}</h3>
-                <p>{d.intro1Body}</p>
+          <div className="dh-layout">
+            <div className="dh-main">
+              <div className="dh-controls">
+                <div className="dh-source-toggle">
+                  <button
+                    className={`btn-secondary${sourceMode === "webcam" ? " active" : ""}`}
+                    onClick={() => setSourceMode("webcam")}
+                    type="button"
+                    disabled={tracking}
+                  >
+                    {d.webcam}
+                  </button>
+                  <button
+                    className={`btn-secondary${sourceMode === "file" ? " active" : ""}`}
+                    onClick={() => setSourceMode("file")}
+                    type="button"
+                    disabled={tracking}
+                  >
+                    {d.localVideo}
+                  </button>
+                </div>
+
+                {sourceMode === "webcam" && (
+                  <>
+                    <label className="dh-cam-control">
+                      <span className="dh-cam-label">{d.camLabel}</span>
+                      <select
+                        className="dh-select dh-select-sm"
+                        value={cameraId}
+                        onChange={(e) => setCameraId(e.target.value)}
+                        disabled={tracking}
+                      >
+                        <option value="">{d.camDefault}</option>
+                        {cameras.map((cam, i) => (
+                          <option key={cam.deviceId} value={cam.deviceId}>
+                            {cam.label || `${d.camFallback} ${i + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="dh-cam-control">
+                      <span className="dh-cam-label">{d.resLabel}</span>
+                      <select
+                        className="dh-select dh-select-sm"
+                        value={resolution}
+                        onChange={(e) => setResolution(e.target.value)}
+                        disabled={tracking}
+                      >
+                        {RESOLUTIONS.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <button
+                      className="btn-primary"
+                      onClick={startWebcam}
+                      type="button"
+                      disabled={tracking}
+                    >
+                      {d.startWebcam}
+                    </button>
+                  </>
+                )}
+
+                {sourceMode === "file" && (
+                  <label className="btn-primary btn-file">
+                    {d.loadVideo}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleFileLoad}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                )}
+
+                <button
+                  className="btn-secondary"
+                  onClick={stopTracking}
+                  type="button"
+                  disabled={!tracking}
+                >
+                  {d.stop}
+                </button>
+
+                <button
+                  className="btn-secondary"
+                  onClick={resetMeasurement}
+                  type="button"
+                  disabled={!tracking}
+                  title={d.remeasureTitle}
+                >
+                  {d.remeasure}
+                </button>
+
+                <button
+                  className="btn-secondary"
+                  onClick={handleReset}
+                  type="button"
+                >
+                  {d.reset}
+                </button>
               </div>
-              <div className="dh-intro-step">
-                <span className="dh-intro-number">2</span>
-                <h3>{d.intro2Title}</h3>
-                <p>{d.intro2Body}</p>
+
+              <div className="dh-video-area">
+                <div className="dh-video-container">
+                  <video
+                    ref={videoRef}
+                    playsInline
+                    muted
+                    className="dh-video"
+                    onEnded={handleVideoEnded}
+                  />
+                  <canvas ref={overlayRef} className="dh-overlay" />
+                  {tracking && (
+                    <>
+                      <div className="dh-fps-badge">
+                        {videoDims ? `${videoDims.w}×${videoDims.h} · ` : ""}
+                        {fps.toFixed(1)} FPS
+                      </div>
+                      <div
+                        className={`dh-face-badge ${faceDetected ? "dh-face-ok" : "dh-face-missing"}`}
+                        role="status"
+                      >
+                        {faceDetected ? d.faceOk : d.faceMissing}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <canvas ref={graphRef} width={600} height={150} className="dh-graph" />
               </div>
-              <div className="dh-intro-step">
-                <span className="dh-intro-number">3</span>
-                <h3>{d.intro3Title}</h3>
-                <p>{d.intro3Body}</p>
+
+              <div className="dh-metrics">
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricFps}</span>
+                  <span className="dh-metric-value">{fps.toFixed(1)}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricVelH}</span>
+                  <span className="dh-metric-value">{velH.toFixed(1)}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricVelV}</span>
+                  <span className="dh-metric-value">{velV.toFixed(1)}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricFreq}</span>
+                  <span className="dh-metric-value">{freq.toFixed(2)}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricDirection}</span>
+                  <span className="dh-metric-value">
+                    {t.direction[direction as keyof Dict["direction"]] ?? direction}
+                  </span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricLatency}</span>
+                  <span className="dh-metric-value">{latency !== null ? latency.toFixed(2) : "-"}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricBeats}</span>
+                  <span className="dh-metric-value">{beats}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricDuration}</span>
+                  <span className="dh-metric-value">{duration !== null ? duration.toFixed(2) : "-"}</span>
+                </div>
+                <div className="dh-metric">
+                  <span className="dh-metric-label">{d.metricFatigable}</span>
+                  <span className="dh-metric-value">
+                    {t.fatigable[fatigable as keyof Dict["fatigable"]] ?? fatigable}
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
 
-          <PrivacyEgressMeter
-            framesProcessed={framesProcessed}
-            features={sentFeatures}
-          />
+              <p className="dh-experimental-note">{d.experimentalNote}</p>
 
-          <div className="dh-controls">
-            <div className="dh-source-toggle">
-              <button
-                className={`btn-secondary${sourceMode === "webcam" ? " active" : ""}`}
-                onClick={() => setSourceMode("webcam")}
-                type="button"
-                disabled={tracking}
-              >
-                {d.webcam}
-              </button>
-              <button
-                className={`btn-secondary${sourceMode === "file" ? " active" : ""}`}
-                onClick={() => setSourceMode("file")}
-                type="button"
-                disabled={tracking}
-              >
-                {d.localVideo}
-              </button>
-            </div>
+              <div className="dh-confirm-section">
+                <h3>{d.confirmHeading}</h3>
+                <p className="dh-confirm-note">{d.confirmNote}</p>
 
-            {sourceMode === "webcam" && (
-              <button
-                className="btn-primary"
-                onClick={startWebcam}
-                type="button"
-                disabled={tracking}
-              >
-                {d.startWebcam}
-              </button>
-            )}
+                <div className="dh-confirm-group">
+                  <label>{d.torsionLabel}</label>
+                  <div className="dh-radio-group">
+                    <label className="dh-radio">
+                      <input
+                        type="radio"
+                        name="torsion"
+                        value="right_ear"
+                        checked={torsion === "right_ear"}
+                        onChange={() => setTorsion("right_ear")}
+                      />
+                      {d.torsionRight}
+                    </label>
+                    <label className="dh-radio">
+                      <input
+                        type="radio"
+                        name="torsion"
+                        value="left_ear"
+                        checked={torsion === "left_ear"}
+                        onChange={() => setTorsion("left_ear")}
+                      />
+                      {d.torsionLeft}
+                    </label>
+                    <label className="dh-radio">
+                      <input
+                        type="radio"
+                        name="torsion"
+                        value="none"
+                        checked={torsion === "none"}
+                        onChange={() => setTorsion("none")}
+                      />
+                      {d.torsionNone}
+                    </label>
+                  </div>
+                </div>
 
-            {sourceMode === "file" && (
-              <label className="btn-primary btn-file">
-                {d.loadVideo}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={handleFileLoad}
-                  style={{ display: "none" }}
-                />
-              </label>
-            )}
+                <div className="dh-confirm-group">
+                  <label>{d.dixLabel}</label>
+                  <select
+                    className="dh-select"
+                    value={dixResult}
+                    onChange={(e) => setDixResult(e.target.value as DixHallpikeResult)}
+                  >
+                    <option value="">{d.dixSelect}</option>
+                    <option value="right_positive">{d.dixRight}</option>
+                    <option value="left_positive">{d.dixLeft}</option>
+                    <option value="bilateral_positive">{d.dixBilateral}</option>
+                    <option value="negative">{d.dixNegative}</option>
+                  </select>
+                </div>
 
-            <button
-              className="btn-secondary"
-              onClick={stopTracking}
-              type="button"
-              disabled={!tracking}
-            >
-              {d.stop}
-            </button>
+                {confirmError && (
+                  <div className="notice notice-error dh-confirm-error" role="alert">
+                    {d[confirmError]}
+                  </div>
+                )}
 
-            <button
-              className="btn-secondary"
-              onClick={handleReset}
-              type="button"
-            >
-              {d.reset}
-            </button>
-          </div>
+                <button
+                  className="btn-primary dh-confirm-submit"
+                  onClick={handleSendToPipeline}
+                  type="button"
+                  disabled={isStreaming || !hasMeasurement}
+                >
+                  {isStreaming ? (
+                    <>
+                      <span className="spinner" /> {d.evaluatingShort}
+                    </>
+                  ) : (
+                    d.confirmSubmit
+                  )}
+                </button>
+              </div>
 
-          <div className="dh-video-area">
-            <div className="dh-video-container">
-              <video ref={videoRef} playsInline muted className="dh-video" />
-              <canvas ref={overlayRef} className="dh-overlay" />
-              {tracking && (
-                <div className="dh-fps-badge">
-                  {fps.toFixed(1)} FPS
+              {(isStreaming || pipelineResult || pipelineError || completedStages.size > 0) && (
+                <div className="dh-pipeline-section">
+                  <h3>{d.pipelineHeading}</h3>
+
+                  <PipelineRail
+                    completed={completedStages}
+                    active={activeStage}
+                    hasError={pipelineError !== null}
+                  />
+
+                  {pipelineError && (
+                    <div className="notice notice-error" role="alert">
+                      <strong>{t.common.error}</strong> {uiErrorText(pipelineError, t)}
+                    </div>
+                  )}
+
+                  {pipelineResult && <ClinicalCaseReceipt result={pipelineResult} />}
                 </div>
               )}
             </div>
 
-            <canvas ref={graphRef} width={600} height={150} className="dh-graph" />
+            <aside className="dh-guide" aria-label={d.guideTitle}>
+              <h3 className="dh-guide-title">{d.guideTitle}</h3>
+              <p className="dh-guide-intro">{d.guideIntro}</p>
+              <ol className="dh-guide-steps">
+                {guideSteps.map((s, i) => {
+                  const n = i + 1;
+                  const done = pipelineResult !== null || n < guideStep;
+                  const active = !done && n === guideStep;
+                  return (
+                    <li
+                      key={n}
+                      className={`dh-guide-step${done ? " dh-guide-done" : ""}${active ? " dh-guide-active" : ""}`}
+                      aria-current={active ? "step" : undefined}
+                    >
+                      <span className="dh-guide-num">{done ? "✓" : n}</span>
+                      <div className="dh-guide-text">
+                        <h4>{s.title}</h4>
+                        <p>{s.body}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </aside>
           </div>
 
-          <div className="dh-metrics">
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricFps}</span>
-              <span className="dh-metric-value">{fps.toFixed(1)}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricVelH}</span>
-              <span className="dh-metric-value">{velH.toFixed(1)}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricVelV}</span>
-              <span className="dh-metric-value">{velV.toFixed(1)}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricFreq}</span>
-              <span className="dh-metric-value">{freq.toFixed(2)}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricDirection}</span>
-              <span className="dh-metric-value">
-                {t.direction[direction as keyof Dict["direction"]] ?? direction}
-              </span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricLatency}</span>
-              <span className="dh-metric-value">{latency !== null ? latency.toFixed(2) : "-"}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricBeats}</span>
-              <span className="dh-metric-value">{beats}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricDuration}</span>
-              <span className="dh-metric-value">{duration !== null ? duration.toFixed(2) : "-"}</span>
-            </div>
-            <div className="dh-metric">
-              <span className="dh-metric-label">{d.metricFatigable}</span>
-              <span className="dh-metric-value">
-                {t.fatigable[fatigable as keyof Dict["fatigable"]] ?? fatigable}
-              </span>
-            </div>
-          </div>
-
-          <p className="dh-experimental-note">{d.experimentalNote}</p>
-
-          <div className="dh-confirm-section">
-            <h3>{d.confirmHeading}</h3>
-            <p className="dh-confirm-note">{d.confirmNote}</p>
-
-            <div className="dh-confirm-group">
-              <label>{d.torsionLabel}</label>
-              <div className="dh-radio-group">
-                <label className="dh-radio">
-                  <input
-                    type="radio"
-                    name="torsion"
-                    value="right_ear"
-                    checked={torsion === "right_ear"}
-                    onChange={() => setTorsion("right_ear")}
-                  />
-                  {d.torsionRight}
-                </label>
-                <label className="dh-radio">
-                  <input
-                    type="radio"
-                    name="torsion"
-                    value="left_ear"
-                    checked={torsion === "left_ear"}
-                    onChange={() => setTorsion("left_ear")}
-                  />
-                  {d.torsionLeft}
-                </label>
-                <label className="dh-radio">
-                  <input
-                    type="radio"
-                    name="torsion"
-                    value="none"
-                    checked={torsion === "none"}
-                    onChange={() => setTorsion("none")}
-                  />
-                  {d.torsionNone}
-                </label>
-              </div>
-            </div>
-
-            <div className="dh-confirm-group">
-              <label>{d.dixLabel}</label>
-              <select
-                className="dh-select"
-                value={dixResult}
-                onChange={(e) => setDixResult(e.target.value as DixHallpikeResult)}
-              >
-                <option value="">{d.dixSelect}</option>
-                <option value="right_positive">{d.dixRight}</option>
-                <option value="left_positive">{d.dixLeft}</option>
-                <option value="bilateral_positive">{d.dixBilateral}</option>
-                <option value="negative">{d.dixNegative}</option>
-              </select>
-            </div>
-
-            {confirmError && (
-              <div className="notice notice-error dh-confirm-error" role="alert">
-                {d[confirmError]}
-              </div>
-            )}
-
-            <button
-              className="btn-primary dh-confirm-submit"
-              onClick={handleSendToPipeline}
-              type="button"
-              disabled={isStreaming || !tracking}
-            >
-              {isStreaming ? (
-                <>
-                  <span className="spinner" /> {d.evaluatingShort}
-                </>
-              ) : (
-                d.confirmSubmit
-              )}
-            </button>
-          </div>
-
-          {(isStreaming || pipelineResult || pipelineError || completedStages.size > 0) && (
-            <div className="dh-pipeline-section">
-              <h3>{d.pipelineHeading}</h3>
-
-              <PipelineRail
-                completed={completedStages}
-                active={activeStage}
-                hasError={pipelineError !== null}
-              />
-
-              {pipelineError && (
-                <div className="notice notice-error" role="alert">
-                  <strong>{t.common.error}</strong> {uiErrorText(pipelineError, t)}
-                </div>
-              )}
-
-              {pipelineResult && <ClinicalCaseReceipt result={pipelineResult} />}
-            </div>
-          )}
+          <details className="dh-egress-details">
+            <summary>
+              <span className="dh-egress-summary-title">{t.egress.title}</span>
+              <span className="dh-egress-summary-hint">{t.egress.collapsedHint}</span>
+            </summary>
+            <PrivacyEgressMeter
+              framesProcessed={framesProcessed}
+              features={sentFeatures}
+            />
+          </details>
         </>
       )}
     </div>

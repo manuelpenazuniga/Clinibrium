@@ -2739,44 +2739,99 @@ code {
   margin-top: 0.5rem;
 }
 
-.dh-intro {
+.dh-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.5rem;
+  align-items: start;
 }
 
-.dh-intro-step {
+.dh-main {
+  min-width: 0;
+}
+
+/* ---------- physician step-by-step guide ---------- */
+
+.dh-guide {
+  position: sticky;
+  top: 1rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 1.2rem 1.3rem;
 }
 
-.dh-intro-number {
+.dh-guide-title {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin: 0 0 0.35rem;
+}
+
+.dh-guide-intro {
+  font-size: 0.78rem;
+  color: var(--ink-3);
+  margin: 0 0 1rem;
+}
+
+.dh-guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.dh-guide-step {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.dh-guide-step.dh-guide-active {
+  border-color: var(--brand);
+  background: var(--surface-2);
+}
+
+.dh-guide-step.dh-guide-done {
+  opacity: 0.62;
+}
+
+.dh-guide-num {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 1.5px solid var(--brand);
   color: var(--brand);
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  margin-bottom: 0.6rem;
+  margin-top: 0.1rem;
 }
 
-.dh-intro-step h3 {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
+.dh-guide-done .dh-guide-num {
+  background: var(--brand);
+  color: #fff;
+}
+
+.dh-guide-text h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.87rem;
   font-weight: 600;
 }
 
-.dh-intro-step p {
+.dh-guide-text p {
   margin: 0;
-  font-size: 0.84rem;
+  font-size: 0.79rem;
+  line-height: 1.45;
   color: var(--ink-2);
 }
 
@@ -2835,6 +2890,10 @@ code {
   position: absolute;
   top: 0;
   left: 0;
+  /* The canvas backing store uses the video's intrinsic pixels; CSS must
+     scale it with the displayed video or the iris dots drift off-target. */
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -2857,6 +2916,47 @@ code {
   font-family: var(--mono);
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.dh-face-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: rgba(18, 32, 43, 0.8);
+}
+
+.dh-face-ok {
+  color: #7ee2b8;
+}
+
+.dh-face-missing {
+  color: #f0837a;
+}
+
+.dh-cam-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dh-cam-label {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.dh-select-sm {
+  min-width: 0;
+  max-width: 220px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
 }
 
 .dh-metrics {
@@ -2981,6 +3081,70 @@ code {
   font-weight: 600;
   font-size: 1.25rem;
   margin: 0 0 1rem;
+}
+
+/* ---------- collapsed egress meter (secondary info) ---------- */
+
+.dh-egress-details {
+  margin-top: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.dh-egress-details > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.dh-egress-details > summary::before {
+  content: "▸";
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+
+.dh-egress-details[open] > summary::before {
+  content: "▾";
+}
+
+.dh-egress-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dh-egress-summary-title {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--brand);
+}
+
+.dh-egress-summary-hint {
+  font-size: 0.76rem;
+  color: var(--ink-3);
+}
+
+.dh-egress-details .privacy-egress-meter {
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin-bottom: 0;
+}
+
+@media (max-width: 1080px) {
+  .dh-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dh-guide {
+    position: static;
+  }
 }
 
 /* ---------- fine-grained responsive ---------- */
