@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # in a normal/public deployment. Enable for the demo or recording.
     DEMO_MODE: bool = False
 
+    # Comma-separated list of browser origins allowed by CORS. The default
+    # keeps the local demo working unchanged; a public deploy sets this to
+    # the frontend's public URL (e.g. "https://clinibrium.up.railway.app").
+    CORS_ORIGINS: str = "http://localhost:3000"
+
 
 _settings: Settings | None = None
 

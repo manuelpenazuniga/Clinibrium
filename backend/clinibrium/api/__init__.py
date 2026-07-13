@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from clinibrium.api.decision import router as decision_router
 from clinibrium.api.evaluate import router as evaluate_router
 from clinibrium.api.what_would_change import router as wwcm_router
+from clinibrium.config import get_settings
 
 
 def create_app() -> FastAPI:
@@ -16,9 +17,10 @@ def create_app() -> FastAPI:
         description="Apoyo diagnóstico otoneurológico — el médico decide.",
     )
 
+    origins = [o.strip() for o in get_settings().CORS_ORIGINS.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
