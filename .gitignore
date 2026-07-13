@@ -21,3 +21,6 @@ next-env.d.ts
 # Local audit log (append-only JSONL fallback; runtime)
 audit_events.jsonl
 *.jsonl
+
+# Internal explainer doc (local only)
+docs/FUNCIONAMIENTO_CLINIBRIUM.md
