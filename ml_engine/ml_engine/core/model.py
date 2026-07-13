@@ -1,15 +1,15 @@
-"""Modelo jerárquico (LCPN) sobre CatBoost — agnóstico de dominio.
+"""Hierarchical model (LCPN) on CatBoost — domain-agnostic.
 
-Un clasificador CatBoost por nodo interno de la ``LabelHierarchy``. La
-probabilidad de hoja es el producto de las condicionales del camino.
+One CatBoost classifier per internal node of the ``LabelHierarchy``. The leaf
+probability is the product of the conditionals along the path.
 
-**Seguridad dentro del ML (INV-9):** el nodo raíz es un GATE BINARIO
-``dangerous vs peripheral`` cuyo target se codifica 1=dangerous, con
-``monotone_constraints=+1`` sobre las features numéricas de riesgo. Garantía
-dura: subir una feature de riesgo (ceteris paribus) NUNCA baja ``P(dangerous)``
-del gate. La garantía es SOLO sobre el gate (pre-abstención); los hijos no la
-tienen (CatBoost restringe por-feature, no per-clase → la versión multiclase
-era inimplementable, fix Codex+Gemini).
+**Safety inside the ML (INV-9):** the root node is a BINARY GATE
+``dangerous vs peripheral`` whose target is encoded 1=dangerous, with
+``monotone_constraints=+1`` on the numeric risk features. Hard guarantee:
+raising a risk feature (ceteris paribus) NEVER lowers the gate's
+``P(dangerous)``. The guarantee is ONLY on the gate (pre-abstention); the
+children do not have it (CatBoost constrains per-feature, not per-class → the
+multiclass version was unimplementable, Codex+Gemini fix).
 """
 from __future__ import annotations
 
@@ -34,15 +34,15 @@ _DEFAULT_PARAMS = {
     "depth": 5,
     "iterations": 250,
     "learning_rate": 0.08,
-    "loss_function": "Logloss",  # se sobreescribe a MultiClass en nodos n-arios
+    "loss_function": "Logloss",  # overridden to MultiClass on n-ary nodes
     "verbose": False,
     "allow_writing_files": False,
-    "thread_count": 1,  # determinismo reproducible
+    "thread_count": 1,  # reproducible determinism
 }
 
 
 def _danger_leaves(h: LabelHierarchy) -> set[str]:
-    """Hojas alcanzables bajo el ``danger_child`` del gate raíz."""
+    """Leaves reachable under the root gate's ``danger_child``."""
     out: set[str] = set()
 
     def _collect(name: str) -> None:
@@ -57,7 +57,7 @@ def _danger_leaves(h: LabelHierarchy) -> set[str]:
 
 
 def _child_on_path(h: LabelHierarchy, node_id: str, leaf: str) -> str | None:
-    """Child de ``node_id`` en el camino hacia ``leaf`` (o None si no aplica)."""
+    """Child of ``node_id`` on the path toward ``leaf`` (or None if not applicable)."""
     for nid, child in h.path_to_leaf(leaf):
         if nid == node_id:
             return child
@@ -67,13 +67,13 @@ def _child_on_path(h: LabelHierarchy, node_id: str, leaf: str) -> str | None:
 @dataclass
 class _NodeModel:
     node_id: str
-    classes: list[str]  # children del nodo (leaf o node_id), en orden estable
+    classes: list[str]  # children of the node (leaf or node_id), stable order
     model: CatBoostClassifier
-    is_gate: bool = False  # gate binario con target 1=dangerous
+    is_gate: bool = False  # binary gate with target 1=dangerous
 
 
 class HierarchicalCatBoost:
-    """Ensamble LCPN. Entrenar con :meth:`train`; predecir con :meth:`predict_proba`."""
+    """LCPN ensemble. Train with :meth:`train`; predict with :meth:`predict_proba`."""
 
     def __init__(
         self,
@@ -92,7 +92,7 @@ class HierarchicalCatBoost:
         self.calibrator = calibrator
         self.abstainer = abstainer
 
-    # ---- entrenamiento --------------------------------------------------
+    # ---- training --------------------------------------------------------
 
     @classmethod
     def train(
@@ -113,7 +113,7 @@ class HierarchicalCatBoost:
         for node in h.nodes:
             nid = node.node_id
             children = list(node.children)
-            # subconjunto de filas que pasan por este nodo + su child-target
+            # subset of rows that pass through this node + their child-target
             targets: list[str] = []
             mask: list[bool] = []
             for leaf in y_leaf:
@@ -126,7 +126,7 @@ class HierarchicalCatBoost:
 
             is_gate = nid == h.root
             if is_gate:
-                # target binario 1=dangerous (controla el signo de la monotonía)
+                # binary target 1=dangerous (controls the sign of the monotonicity)
                 y = (t_node == h.danger_child).astype(int)
                 mono = {r: 1 for r in risk}
                 model = CatBoostClassifier(
@@ -146,7 +146,7 @@ class HierarchicalCatBoost:
         version = f"synthetic-v1-seed{seed}"
         return cls(domain, nodes, version)
 
-    # ---- persistencia (TB1.8) ------------------------------------------
+    # ---- persistence (TB1.8) ---------------------------------------------
 
     def save(self, out_dir: str | Path) -> None:
         d = Path(out_dir)
@@ -181,7 +181,7 @@ class HierarchicalCatBoost:
         manifest = json.loads((d / _MANIFEST).read_text())
         if manifest["domain"] != domain.name:
             raise ValueError(
-                f"manifest de dominio '{manifest['domain']}' ≠ '{domain.name}'"
+                f"manifest domain '{manifest['domain']}' != '{domain.name}'"
             )
         nodes: dict[str, _NodeModel] = {}
         for entry in manifest["nodes"]:
@@ -200,13 +200,13 @@ class HierarchicalCatBoost:
             ab = ConfidenceGate(float(a["threshold"]), a["abstain_label"])
         return cls(domain, nodes, manifest["model_version"], calibrator=cal, abstainer=ab)
 
-    # ---- inferencia -----------------------------------------------------
+    # ---- inference ---------------------------------------------------------
 
     def _node_conditional(self, nm: _NodeModel, x_row: pd.DataFrame) -> dict[str, float]:
-        """P(child | node) para una fila (1×features)."""
+        """P(child | node) for one row (1×features)."""
         proba = nm.model.predict_proba(x_row)[0]
         if nm.is_gate:
-            # class 1 = dangerous = danger_child; class 0 = el otro child
+            # class 1 = dangerous = danger_child; class 0 = the other child
             p_danger = float(proba[1])
             other = [c for c in nm.classes if c != self.hierarchy.danger_child][0]
             return {self.hierarchy.danger_child: p_danger, other: 1.0 - p_danger}
@@ -214,15 +214,15 @@ class HierarchicalCatBoost:
         return {cls_: float(p) for cls_, p in zip(classes, proba, strict=True)}
 
     def gate_danger_proba_encoded(self, x_row: pd.DataFrame) -> float:
-        """P(dangerous) del gate raíz sobre una fila YA codificada (para INV-9)."""
+        """Root gate's P(dangerous) on an ALREADY encoded row (for INV-9)."""
         gate = self._nodes[self.hierarchy.root]
         return float(gate.model.predict_proba(x_row)[0][1])
 
     def predict_proba_one(self, row: dict) -> dict[str, float]:
-        """Distribución sobre las 8 hojas (Σ≈1). NO incluye abstención."""
+        """Distribution over the 8 leaves (Σ≈1). Does NOT include abstention."""
         x_row, _ = encode([row], self.features)
         leaf_probs: dict[str, float] = {}
-        # BFS desde la raíz propagando la masa de probabilidad
+        # BFS from the root propagating the probability mass
         node_mass: dict[str, float] = {self.hierarchy.root: 1.0}
         queue = [self.hierarchy.root]
         while queue:
@@ -236,7 +236,7 @@ class HierarchicalCatBoost:
                 else:
                     node_mass[child] = p
                     queue.append(child)
-        # normaliza por seguridad numérica
+        # normalize for numeric safety
         total = sum(leaf_probs.values())
         if total > 0:
             leaf_probs = {k: v / total for k, v in leaf_probs.items()}
@@ -246,10 +246,11 @@ class HierarchicalCatBoost:
         return [self.predict_proba_one(r) for r in rows]
 
     def explain_gate(self, row: dict, *, top_k: int = 6) -> dict[str, float]:
-        """SHAP local del GATE de peligro (TB1.6): {feature → contribución a P(dangerous)}.
+        """Local SHAP of the danger GATE (TB1.6): {feature → contribution to P(dangerous)}.
 
-        Atribución de UN nodo (sin agregación cross-nodo). Positivo ⇒ empuja a
-        peligro. Sobre datos sintéticos explica el generador, no causalidad clínica.
+        Attribution of ONE node (no cross-node aggregation). Positive ⇒ pushes
+        toward danger. On synthetic data it explains the generator, not clinical
+        causality.
         """
         x_row, cat = encode([row], self.features)
         gate = self._nodes[self.hierarchy.root]
@@ -258,10 +259,11 @@ class HierarchicalCatBoost:
         )
 
     def predict_case(self, row: dict) -> dict[str, float]:
-        """Distribución FINAL sobre las 9 claves (8 hojas + abstención, Σ≈1).
+        """FINAL distribution over the 9 keys (8 leaves + abstention, Σ≈1).
 
-        Aplica calibración (si está) y abstención (si está). Es lo que sirve el
-        endpoint ``/predict``. Si no hay abstainer, ``undetermined`` queda en 0.
+        Applies calibration (if present) and abstention (if present). This is
+        what the ``/predict`` endpoint serves. If there is no abstainer,
+        ``undetermined`` stays at 0.
         """
         p = self.predict_proba_one(row)
         if self.calibrator is not None:

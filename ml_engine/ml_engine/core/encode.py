@@ -1,12 +1,13 @@
-"""Ejecutor CIEGO de features (agnóstico de dominio).
+"""BLIND feature executor (domain-agnostic).
 
-Toma filas crudas (dicts o DataFrame) + un ``FeatureSpec`` y produce la matriz
-de features para CatBoost: categóricas como string, booleanas/numéricas como
-float, y las derivadas aplicando los transformadores PUROS que el dominio
-declaró (el core no conoce ninguna lógica de dominio — fix Gemini #3).
+Takes raw rows (dicts or DataFrame) + a ``FeatureSpec`` and produces the
+feature matrix for CatBoost: categoricals as string, booleans/numerics as
+float, and the derived features by applying the PURE transformers the domain
+declared (the core knows no domain logic — Gemini fix #3).
 
-Convención de faltantes: categórica ausente → ``"__nan__"`` (categoría propia,
-CatBoost la maneja); numérica ausente → ``NaN`` (CatBoost la maneja nativo).
+Missing-value convention: missing categorical → ``"__nan__"`` (its own
+category, CatBoost handles it); missing numeric → ``NaN`` (CatBoost handles it
+natively).
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ def _to_cat(v: object) -> str:
 
 
 def _to_float01(v: object) -> float:
-    # booleana → {0,1}; ausente → 0 (semántica: feature no presente)
+    # boolean → {0,1}; missing → 0 (semantics: feature not present)
     if _is_missing(v):
         return 0.0
     return 1.0 if v else 0.0
@@ -54,10 +55,10 @@ def _rows(data: pd.DataFrame | list[Mapping[str, object]]) -> list[dict[str, obj
 def encode(
     data: pd.DataFrame | list[Mapping[str, object]], features: FeatureSpec
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Codifica filas crudas → (X, categorical_feature_names).
+    """Encodes raw rows → (X, categorical_feature_names).
 
-    ``X`` tiene columnas en el orden ``features.feature_names`` (raw + derivadas).
-    Las derivadas se computan aplicando ``DerivedFeature.fn`` a la fila cruda.
+    ``X`` has columns in ``features.feature_names`` order (raw + derived).
+    Derived features are computed by applying ``DerivedFeature.fn`` to the raw row.
     """
     records = _rows(data)
     cols: dict[str, list[object]] = {}
@@ -75,12 +76,12 @@ def encode(
         cols[d.name] = [float(d.fn(r)) for r in records]
 
     x = pd.DataFrame(cols)
-    # dtypes explícitos: categóricas como str, resto float
+    # explicit dtypes: categoricals as str, rest float
     for name in features.categorical_names:
         x[name] = x[name].astype(str)
     for name in features.numeric_feature_names:
         x[name] = pd.to_numeric(x[name], errors="coerce").astype(float)
 
     x = x[list(features.feature_names)]
-    x = x.replace({np.nan: np.nan})  # normaliza cualquier None residual numérico
+    x = x.replace({np.nan: np.nan})  # normalizes any residual numeric None
     return x, list(features.categorical_names)

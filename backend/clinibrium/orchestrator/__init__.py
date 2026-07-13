@@ -1,4 +1,4 @@
-"""Pipeline de evaluación VertigoDx — compone todos los módulos."""
+"""VertigoDx evaluation pipeline — composes all modules."""
 from __future__ import annotations
 
 from clinibrium.orchestrator.pipeline import evaluate

@@ -1,168 +1,168 @@
 # MediaPipe Nystagmus Detection Spike
 
-**Spike de viabilidad** para medición determinista on-device de nistagmo usando MediaPipe FaceLandmarker.
+**Feasibility spike** for deterministic on-device nystagmus measurement using MediaPipe FaceLandmarker.
 
-## Objetivo
+## Goal
 
-Responder: ¿Se puede medir nistagmo a 60fps de forma fiable con MediaPipe en el navegador?
+Answer: can nystagmus be measured reliably at 60fps with MediaPipe in the browser?
 
-## Cómo correr
+## How to run
 
-### Opción 1: Servidor estático (recomendado)
+### Option 1: Static server (recommended)
 ```bash
 cd spikes/mediapipe-nystagmus
 npx serve
 ```
 
-Luego abrir `http://localhost:3000` en Chrome/Edge.
+Then open `http://localhost:3000` in Chrome/Edge.
 
-### Opción 2: Apertura directa
+### Option 2: Direct open
 ```bash
 open index.html
 ```
 
-**Nota**: Si hay errores CORS al cargar el modelo, usá `npx serve` o cualquier servidor HTTP.
+**Note**: If you get CORS errors when loading the model, use `npx serve` or any HTTP server.
 
-## Uso
+## Usage
 
-1. **Webcam**: Click "Iniciar Webcam" para trackeo en vivo
-2. **Video**: Click "Cargar Video" para procesar un clip grabado (ej. Dix-Hallpike a 60fps)
-3. **Observar**: 
-   - Overlay verde: puntos del iris trackeados
-   - Puntos rojos: centros del iris calculados
-   - Gráfico inferior: velocidad horizontal (rojo) y vertical (azul) vs tiempo
-   - Métricas: FPS, velocidad, frecuencia de nistagmo, latencia, batidas, dirección, fatigabilidad
+1. **Webcam**: Click "Start Webcam" for live tracking
+2. **Video**: Click "Load Video" to process a recorded clip (e.g. Dix-Hallpike at 60fps)
+3. **Observe**:
+   - Green overlay: tracked iris points
+   - Red dots: computed iris centers
+   - Bottom graph: horizontal (red) and vertical (blue) velocity vs time
+   - Metrics: FPS, velocity, nystagmus frequency, latency, beats, direction, fatigability
 
-## Arquitectura del algoritmo
+## Algorithm architecture
 
-### Tracking del iris
-- **Landmarks**: 468-472 (iris izquierdo), 473-477 (iris derecho)
-- **Centro**: Promedio de los 5 puntos del iris por ojo
-- **Estabilización**: Promedio de ambos ojos para reducir ruido
+### Iris tracking
+- **Landmarks**: 468-472 (left iris), 473-477 (right iris)
+- **Center**: Average of the 5 iris points per eye
+- **Stabilization**: Average of both eyes to reduce noise
 
-### Cálculo de velocidad
+### Velocity computation
 ```
 vx = (dx_pixels * PX_TO_DEG) / dt
 vy = (dy_pixels * PX_TO_DEG) / dt
 ```
-Donde `PX_TO_DEG ≈ 0.05` (aproximación: ~20px por grado visual)
+Where `PX_TO_DEG ≈ 0.05` (approximation: ~20px per visual degree)
 
-**Limitación**: Esta conversión es una estimación burda. Para grados/s reales se necesitaría:
-- Calibración con referencia conocida (ej. target a distancia fija)
-- Considerar distancia cámara-ojo y FOV del lente
+**Limitation**: This conversion is a rough estimate. Real deg/s would require:
+- Calibration against a known reference (e.g. target at fixed distance)
+- Accounting for camera-eye distance and lens FOV
 
-### Detección de nistagmo
-- **Fase rápida**: Umbral de velocidad > 30°/s
-- **Intervalo mínimo entre batidas**: 300ms (evita falsos positivos)
-- **Frecuencia**: `n_batidas / duración_total`
-- **Dirección**: Promedio de velocidad en últimos 30 frames
-- **Latencia**: Tiempo desde inicio hasta primera batida
-- **Fatigabilidad**: Comparación de amplitud primera vs segunda mitad del video
+### Nystagmus detection
+- **Fast phase**: Velocity threshold > 30°/s
+- **Minimum interval between beats**: 300ms (avoids false positives)
+- **Frequency**: `n_beats / total_duration`
+- **Direction**: Average velocity over the last 30 frames
+- **Latency**: Time from start to first beat
+- **Fatigability**: Amplitude comparison between the first and second half of the video
 
-## Dependencias
+## Dependencies
 
-- **MediaPipe Tasks Vision** v0.10.18 (vía CDN)
-- **Modelo**: FaceLandmarker (float16, ~30MB)
-- **Navegador**: Chrome/Edge con WebGPU/WebGL2
+- **MediaPipe Tasks Vision** v0.10.18 (via CDN)
+- **Model**: FaceLandmarker (float16, ~30MB)
+- **Browser**: Chrome/Edge with WebGPU/WebGL2
 
-**Todo on-device**: El video NUNCA se sube a ningún servidor. Solo se descarga la librería de MediaPipe.
+**All on-device**: The video is NEVER uploaded to any server. Only the MediaPipe library is downloaded.
 
 ---
 
-## VEREDICTO DE VIABILIDAD
+## FEASIBILITY VERDICT
 
-**COMPLETAR DESPUÉS DE VALIDAR CON CLIP REAL DE DIX-HALLPIKE**
+**COMPLETE AFTER VALIDATING WITH A REAL DIX-HALLPIKE CLIP**
 
-### Métricas observadas
+### Observed metrics
 
-| Métrica | Valor | Objetivo | ¿Cumple? |
+| Metric | Value | Target | Pass? |
 |---------|-------|----------|----------|
-| FPS efectivo | _ TBD _ | ≥55 fps | ⏳ |
-| Estabilidad del tracking | _ TBD _ | <5% dropped frames | ⏳ |
-| Detección de batidas | _ TBD _ | Sensibilidad >80% | ⏳ |
-| Precisión de dirección | _ TBD _ | Concordancia con experto | ⏳ |
-| Latencia de detección | _ TBD _ | <500ms desde inicio | ⏳ |
+| Effective FPS | _ TBD _ | ≥55 fps | ⏳ |
+| Tracking stability | _ TBD _ | <5% dropped frames | ⏳ |
+| Beat detection | _ TBD _ | Sensitivity >80% | ⏳ |
+| Direction accuracy | _ TBD _ | Agreement with expert | ⏳ |
+| Detection latency | _ TBD _ | <500ms from start | ⏳ |
 
-### Análisis de viabilidad
+### Feasibility analysis
 
-#### Tier 1: Velocidad horizontal/vertical on-device
+#### Tier 1: Horizontal/vertical velocity on-device
 
-**¿Es viable?** _PENDIENTE DE VALIDACIÓN_
+**Is it feasible?** _PENDING VALIDATION_
 
-**Factores a favor**:
-- MediaPipe FaceLandmarker soporta 478 landmarks incluyendo iris
-- GPU acceleration en navegador (WebGPU/WebGL2)
-- Sin latencia de red (todo on-device)
+**Factors in favor**:
+- MediaPipe FaceLandmarker supports 478 landmarks including iris
+- GPU acceleration in the browser (WebGPU/WebGL2)
+- No network latency (all on-device)
 
-**Limitaciones conocidas**:
-1. **FPS**: MediaPipe reporta ~30-45fps en hardware típico con iris tracking. 60fps es ambicioso.
-2. **Conversión px→grados**: La aproximación actual (0.05°/px) es burda. Para clínica se necesita calibración por paciente.
-3. **Robustez del iris**:
-   - Degrada con iluminación pobre o desigual
-   - Párpados cerrados/parcialmente cerrados causan dropout
-   - Lentes de contacto pueden confundir el tracker
-4. **Aliasing temporal**: A 30fps, nistagmos >1.5Hz pueden tener aliasing. 60fps es deseable.
-5. **Detección de fases**: El algoritmo actual (umbral de velocidad) es básico. Fases lentas rápidas requieren análisis de aceleración/jerk.
+**Known limitations**:
+1. **FPS**: MediaPipe reports ~30-45fps on typical hardware with iris tracking. 60fps is ambitious.
+2. **px→degrees conversion**: The current approximation (0.05°/px) is rough. Clinical use requires per-patient calibration.
+3. **Iris robustness**:
+   - Degrades with poor or uneven lighting
+   - Closed/partially closed eyelids cause dropout
+   - Contact lenses can confuse the tracker
+4. **Temporal aliasing**: At 30fps, nystagmus >1.5Hz may alias. 60fps is desirable.
+5. **Phase detection**: The current algorithm (velocity threshold) is basic. Fast slow-phases require acceleration/jerk analysis.
 
-#### Tier 2: Torsión (rotación ocular)
+#### Tier 2: Torsion (ocular rotation)
 
-**¿Es viable?** **NO en esta iteración**
+**Is it feasible?** **NOT in this iteration**
 
-**Razones**:
-1. MediaPipe FaceLandmarker **no provee torsión directamente**
-2. Se necesitaría:
-   - Tracking de características del iris (patrones de criptas)
-   - O tracking de vasos sanguíneos en esclera
-   - Ambos requieren procesamiento de imagen adicional (OpenCV.js, custom shaders)
-3. Complejidad algorítmica significativa (registro de imágenes, optical flow)
-4. Performance: probablemente <15fps con torsión
+**Reasons**:
+1. MediaPipe FaceLandmarker **does not provide torsion directly**
+2. It would require:
+   - Tracking iris features (crypt patterns)
+   - Or tracking scleral blood vessels
+   - Both need additional image processing (OpenCV.js, custom shaders)
+3. Significant algorithmic complexity (image registration, optical flow)
+4. Performance: probably <15fps with torsion
 
-**Alternativa para torsión**: Usar video-oculografía dedicada (hardware) o algoritmos de research (ej.基于iris pattern matching con deep learning)
+**Alternative for torsion**: Use dedicated video-oculography (hardware) or research algorithms (e.g. iris pattern matching with deep learning)
 
-### Recomendación al equipo
+### Recommendation to the team
 
-**Para Tier 1 (V/H on-device)**:
-- ✅ **Viable con reservas** si se acepta:
-  - FPS realista: 30-45fps (no 60fps)
-  - Calibración manual para conversión px→grados
-  - Condiciones controladas de iluminación
-  - Validación contra experto en ≥20 clips
-  
-- 🔧 **Mejoras necesarias para producción**:
-  1. Calibración por paciente (target a distancia conocida)
-  2. Filtro de Kalman para suavizar trayectoria del iris
-  3. Detección de fases lenta/rápida con análisis de jerk (derivada de aceleración)
-  4. Manejo de dropout (párpados, parpadeos) con interpolación
-  5. Validación clínica formal (sensibilidad/especificidad vs VOG gold standard)
+**For Tier 1 (V/H on-device)**:
+- ✅ **Feasible with caveats** if the following is accepted:
+  - Realistic FPS: 30-45fps (not 60fps)
+  - Manual calibration for px→degrees conversion
+  - Controlled lighting conditions
+  - Validation against an expert on ≥20 clips
 
-**Para Tier 2 (torsión)**:
-- ❌ **No viable con MediaPipe alone**
-- 🔬 Requiere spike separado con:
-  - OpenCV.js para optical flow
-  - Algoritmo de registro de iris (ej. phase-based optical flow)
-  - Validación contra torsión artificial (video sintético con rotación conocida)
+- 🔧 **Improvements needed for production**:
+  1. Per-patient calibration (target at a known distance)
+  2. Kalman filter to smooth the iris trajectory
+  3. Slow/fast phase detection with jerk analysis (derivative of acceleration)
+  4. Dropout handling (eyelids, blinks) with interpolation
+  5. Formal clinical validation (sensitivity/specificity vs VOG gold standard)
 
-### Próximos pasos sugeridos
+**For Tier 2 (torsion)**:
+- ❌ **Not feasible with MediaPipe alone**
+- 🔬 Requires a separate spike with:
+  - OpenCV.js for optical flow
+  - Iris registration algorithm (e.g. phase-based optical flow)
+  - Validation against artificial torsion (synthetic video with known rotation)
 
-1. **Validar este spike** con clip real de Dix-Hallpike a 60fps
-2. **Medir FPS real** en hardware objetivo (laptop del clínico, tablet)
-3. **Comparar** métricas calculadas vs interpretación de experto
-4. Si FPS < 55: evaluar trade-off calidad/speed (reducir landmarks, usar modelo lite)
-5. Si tracking es inestable: considerar filtro de Kalman o mediana móvil
+### Suggested next steps
 
-### Conclusión
+1. **Validate this spike** with a real Dix-Hallpike clip at 60fps
+2. **Measure real FPS** on target hardware (clinician's laptop, tablet)
+3. **Compare** computed metrics vs expert interpretation
+4. If FPS < 55: evaluate quality/speed trade-off (fewer landmarks, lite model)
+5. If tracking is unstable: consider a Kalman filter or moving median
 
-**Tier 1 (V/H)**: **VIABILIDAD CONDICIONAL** — funciona en condiciones controladas, pero requiere calibración y validación clínica antes de uso diagnóstico.
+### Conclusion
 
-**Tier 2 (torsión)**: **NO VIABLE** con MediaPipe alone. Requiere stack de computer vision adicional y probablemente no alcance tiempo real.
+**Tier 1 (V/H)**: **CONDITIONAL FEASIBILITY** — works under controlled conditions, but requires calibration and clinical validation before diagnostic use.
 
-**Recomendación**: Proceder con Tier 1 como MVP, validar con ≥20 clips reales, y evaluar si la precisión justifica el despliegue. Tier 2 queda como trabajo futuro o se delega a hardware dedicado.
+**Tier 2 (torsion)**: **NOT FEASIBLE** with MediaPipe alone. Requires an additional computer-vision stack and probably won't reach real time.
+
+**Recommendation**: Proceed with Tier 1 as MVP, validate with ≥20 real clips, and evaluate whether the accuracy justifies deployment. Tier 2 remains future work or is delegated to dedicated hardware.
 
 ---
 
-## Notas técnicas
+## Technical notes
 
-### API de MediaPipe usada
+### MediaPipe API used
 ```javascript
 FaceLandmarker.createFromOptions(filesetResolver, {
   baseOptions: {
@@ -179,23 +179,23 @@ faceLandmarker.detectForVideo(videoElement, timestampMs);
 ```
 
 ### Iris landmarks (478 total)
-- **468**: Centro iris izquierdo
-- **469-472**: Contorno iris izquierdo
-- **473**: Centro iris derecho
-- **474-477**: Contorno iris derecho
+- **468**: Left iris center
+- **469-472**: Left iris contour
+- **473**: Right iris center
+- **474-477**: Right iris contour
 
-### Privacidad
-✅ Todo on-device. Cero subida de video/PII a servidores.
+### Privacy
+✅ All on-device. Zero video/PII upload to servers.
 
-### Limitaciones del spike
-- Código no optimizado para producción (es un spike)
-- Umbral de detección hardcodeado (30°/s)
-- Conversión px→grados aproximada
-- Sin manejo de errores robusto
-- Sin interpolación de dropout
+### Spike limitations
+- Code not optimized for production (it is a spike)
+- Hardcoded detection threshold (30°/s)
+- Approximate px→degrees conversion
+- No robust error handling
+- No dropout interpolation
 
 ---
 
-**Autor**: Spike generado para Clinibrium VertigoDx  
-**Fecha**: Julio 2026  
-**Status**: ⏳ Pendiente de validación con clip real
+**Author**: Spike generated for Clinibrium VertigoDx
+**Date**: July 2026
+**Status**: ⏳ Pending validation with a real clip

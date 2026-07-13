@@ -1,7 +1,7 @@
-"""Contratos de salida del pipeline (red flag, diferencial, ML, reasoner).
+"""Pipeline output contracts (red flag, differential, ML, reasoner).
 
-Hoja: SIN lógica, SIN cómputo — solo formas de datos. Ningún import fuera
-del paquete `clinibrium.contracts`.
+Leaf: NO logic, NO computation — data shapes only. No imports outside
+the `clinibrium.contracts` package.
 """
 from __future__ import annotations
 
@@ -28,18 +28,18 @@ class RedFlagResult(BaseModel):
 
 class DifferentialCandidate(BaseModel):
     diagnosis: Diagnosis
-    score: float  # rango [0.0, 1.0]; convención: ordenadas desc por score
+    score: float  # range [0.0, 1.0]; convention: sorted desc by score
     rule_ids: list[str] = []
 
 
 class DifferentialResult(BaseModel):
-    # Ordenadas desc por `score` (convención del productor; el validador no
-    # re-ordena).
+    # Sorted desc by `score` (producer convention; the validator does not
+    # re-sort).
     candidates: list[DifferentialCandidate] = []
 
 
 class PredictResponse(BaseModel):
-    """Contrato del endpoint `POST /predict` (track B — ML opcional)."""
+    """Contract for the `POST /predict` endpoint (track B — optional ML)."""
 
     probabilities: dict[str, float]
     shap: dict[str, float] | None = None
@@ -47,18 +47,18 @@ class PredictResponse(BaseModel):
 
 
 class ReasonerOutput(BaseModel):
-    """Salida del razonador (Claude).
+    """Reasoner (Claude) output.
 
-    El reasoner EXPLICA y CONCILIA; NO fija `urgency` ni `diagnosis`
-    vinculante — esos los sellan RedFlagEngine + rails (INV-1).
+    The reasoner EXPLAINS and RECONCILES; it does NOT set binding
+    `urgency` or `diagnosis` — those are sealed by RedFlagEngine + rails (INV-1).
     """
 
     explanation: str
     reconciliation: str
     suggested_next_steps: list[str] = []
     model_used: str
-    reasoner_suggested_urgency: Urgency | None = None  # AD-11: estructurada (enum), no texto
-    grounding_refs: list[str] = []  # AD-10: source_ids ICVD chunks (provenance para FHIR/frontend)
+    reasoner_suggested_urgency: Urgency | None = None  # AD-11: structured (enum), not text
+    grounding_refs: list[str] = []  # AD-10: ICVD chunk source_ids (provenance for FHIR/frontend)
 
 
 class PipelineResult(BaseModel):
@@ -71,4 +71,4 @@ class PipelineResult(BaseModel):
     forced_actions: set[ForcedAction] = set()
     applied_rails: list[str] = []
     audit_event_id: str | None = None
-    audit_event: AuditEvent | None = None  # el AuditEvent emitido (para FHIR/frontend)
+    audit_event: AuditEvent | None = None  # the emitted AuditEvent (for FHIR/frontend)

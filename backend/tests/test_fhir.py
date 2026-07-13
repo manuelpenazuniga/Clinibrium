@@ -1,30 +1,30 @@
-"""Tests del módulo ``fhir`` (artefacto auditable FHIR R4).
+"""Tests for the ``fhir`` module (auditable FHIR R4 artifact).
 
-Cubre los criterios de aceptación de T10:
+Covers the acceptance criteria of T10:
 
-  1. ``to_bundle(...)`` con un PipelineResult de BPPV benigno → Bundle
-     válido con Questionnaire, QuestionnaireResponse, Observation,
-     ClinicalImpression, AuditEvent. SIN DetectedIssue/Flag si no hay
-     red flags.
+  1. ``to_bundle(...)`` with a benign-BPPV PipelineResult → valid Bundle
+     with Questionnaire, QuestionnaireResponse, Observation,
+     ClinicalImpression, AuditEvent. NO DetectedIssue/Flag when there
+     are no red flags.
 
-  2. ``to_bundle(...)`` con red flag activa (urgency=inmediata, hits) →
-     DetectedIssue (severity=high) + Flag por cada hit, y
-     ClinicalImpression con urgency inmediata.
+  2. ``to_bundle(...)`` with an active red flag (urgency=inmediata, hits) →
+     DetectedIssue (severity=high) + one Flag per hit, and
+     ClinicalImpression with urgency inmediata.
 
-  3. ``reasoning=None`` → ClinicalImpression nota "degradado", no
-     rompe. La extensión ``extension-reasoner-degraded`` se emite.
+  3. ``reasoning=None`` → ClinicalImpression notes "degradado", does not
+     break. The ``extension-reasoner-degraded`` extension is emitted.
 
-  4. El Bundle serializa a JSON (``json.dumps``) y las referencias
-     entre recursos resuelven: todo recurso referenciado está en el
-     bundle (test automático de resolución de ``urn:uuid:``).
+  4. The Bundle serializes to JSON (``json.dumps``) and cross-resource
+     references resolve: every referenced resource is in the bundle
+     (automatic ``urn:uuid:`` resolution test).
 
-  5. Determinismo: mismo input → mismo bundle (IDs derivados del
+  5. Determinism: same input → same bundle (IDs derived from
      ``case_id``).
 
-  6. Negativo: ``fhir`` SOLO importa ``contracts`` (regla dura del
-     mapa — AST).
+  6. Negative: ``fhir`` ONLY imports ``contracts`` (hard rule of the
+     module map — AST).
 
-  7. Negativo: ``to_bundle`` es pura (no muta input, no hace I/O).
+  7. Negative: ``to_bundle`` is pure (no input mutation, no I/O).
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def _audit(
 
 
 def _features_bppv() -> CaseFeatures:
-    """Caso BPPV benigno: posicional, torsional, fatigable, <60s."""
+    """Benign BPPV case: positional, torsional, fatigable, <60s."""
     return CaseFeatures(
         duration=SymptomDuration.seconds,
         onset=Onset.sudden,
@@ -204,7 +204,7 @@ def _result_red_flag(
 
 
 def _resources_by_type(bundle: dict) -> dict[str, list[dict]]:
-    """Agrupa los recursos del bundle por ``resourceType``."""
+    """Group the bundle's resources by ``resourceType``."""
     out: dict[str, list[dict]] = {}
     for entry in bundle.get("entry", []):
         r = entry.get("resource", {})
@@ -216,7 +216,7 @@ def _resources_by_type(bundle: dict) -> dict[str, list[dict]]:
 
 
 def _collect_urn_refs(obj: object) -> set[str]:
-    """Recorre un dict/list y devuelve todos los ``urn:uuid:...`` referenciados."""
+    """Walk a dict/list and return every referenced ``urn:uuid:...``."""
     refs: set[str] = set()
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -232,21 +232,21 @@ def _collect_urn_refs(obj: object) -> set[str]:
 
 
 # =========================================================================
-# 1. Caso benigno — BPPV sin red flags
+# 1. Benign case — BPPV without red flags
 # =========================================================================
 
 
-class TestBundleBppvBenigno:
-    """Bundle de un caso BPPV benigno: SIN DetectedIssue/Flag."""
+class TestBundleBppvBenign:
+    """Bundle for a benign BPPV case: NO DetectedIssue/Flag."""
 
-    def test_bundle_tipo_collection(self) -> None:
+    def test_bundle_type_collection(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         assert bundle["resourceType"] == "Bundle"
         assert bundle["type"] == "collection"
         assert "id" in bundle
         assert "timestamp" in bundle
 
-    def test_bundle_serializa_a_json(self) -> None:
+    def test_bundle_serializes_to_json(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         s = json.dumps(bundle)
         # roundtrip
@@ -254,21 +254,21 @@ class TestBundleBppvBenigno:
         assert again["resourceType"] == "Bundle"
         assert again["id"] == bundle["id"]
 
-    def test_recursos_esperados_presentes(self) -> None:
+    def test_expected_resources_present(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         grouped = _resources_by_type(bundle)
-        # Recursos OBLIGATORIOS
+        # MANDATORY resources
         assert "Questionnaire" in grouped
         assert "QuestionnaireResponse" in grouped
         assert "ClinicalImpression" in grouped
         assert "AuditEvent" in grouped
-        # Al menos 1 Observation (nistagmus_direction o duración)
+        # At least 1 Observation (nystagmus_direction or duration)
         assert "Observation" in grouped
         assert len(grouped["Observation"]) >= 1
-        # Patient placeholder (anchor de referencias)
+        # Patient placeholder (reference anchor)
         assert "Patient" in grouped
 
-    def test_sin_detected_issue_sin_flag(self) -> None:
+    def test_no_detected_issue_no_flag(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         grouped = _resources_by_type(bundle)
         assert "DetectedIssue" not in grouped
@@ -278,33 +278,33 @@ class TestBundleBppvBenigno:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         ci = _resources_by_type(bundle)["ClinicalImpression"][0]
         assert ci["status"] == "completed"
-        # summary menciona urgencia ambulatoria
+        # summary mentions ambulatory urgency
         assert "ambulatoria" in ci["summary"]
-        # findings: 2 candidatos
+        # findings: 2 candidates
         assert len(ci["finding"]) == 2
-        # score del primer candidato en el basis
+        # first candidate's score in the basis
         assert "score=0.920" in ci["finding"][0]["basis"]
-        # coding del primer finding = bppv_posterior
+        # first finding's coding = bppv_posterior
         first_coding = ci["finding"][0]["itemCodeableConcept"]["coding"][0]
         assert first_coding["code"] == "bppv_posterior"
-        # rule_ids aparecen
+        # rule_ids appear
         assert "R-BPPV-1" in ci["finding"][0]["basis"]
 
 
 # =========================================================================
-# 2. Red flag activa — DetectedIssue + Flag
+# 2. Active red flag — DetectedIssue + Flag
 # =========================================================================
 
 
 class TestBundleRedFlag:
-    """Red flag activa: DetectedIssue(severity=high) + Flag por hit."""
+    """Active red flag: DetectedIssue(severity=high) + one Flag per hit."""
 
-    def test_detected_issue_y_flag_por_cada_hit(self) -> None:
+    def test_detected_issue_and_flag_per_hit(self) -> None:
         bundle = to_bundle(
             _result_red_flag(), _features_bppv(), _audit(urgency=Urgency.inmediata)
         )
         grouped = _resources_by_type(bundle)
-        # 2 hits en el caso AVS
+        # 2 hits in the AVS case
         assert len(grouped["DetectedIssue"]) == 2
         assert len(grouped["Flag"]) == 2
 
@@ -318,11 +318,11 @@ class TestBundleRedFlag:
             assert di["status"] == "final"
             # code = red flag id
             assert di["code"]["coding"][0]["system"].endswith("red-flag")
-            # implicated = AuditEvent del bundle
+            # implicated = the bundle's AuditEvent
             assert "implicated" in di
             assert di["implicated"][0]["reference"].startswith("urn:uuid:")
 
-    def test_flag_status_y_code(self) -> None:
+    def test_flag_status_and_code(self) -> None:
         bundle = to_bundle(
             _result_red_flag(), _features_bppv(), _audit(urgency=Urgency.inmediata)
         )
@@ -330,7 +330,7 @@ class TestBundleRedFlag:
         for f in flags:
             assert f["status"] == "active"
             assert f["code"]["coding"][0]["system"].endswith("red-flag")
-            # text incluye forced_actions
+            # text includes forced_actions
             assert "Forced actions" in f["text"]
 
     def test_clinical_impression_urgency_inmediata(self) -> None:
@@ -342,7 +342,7 @@ class TestBundleRedFlag:
         assert ci["code"]["coding"][0]["code"] == "428321000124101"
 
     def test_clinical_impression_ext_rail_triggered(self) -> None:
-        """Si hay applied_rails, la extensión extension-rail-triggered se emite."""
+        """If there are applied_rails, the extension-rail-triggered extension is emitted."""
         bundle = to_bundle(
             _result_red_flag(), _features_bppv(), _audit(urgency=Urgency.inmediata)
         )
@@ -362,9 +362,9 @@ class TestBundleRedFlag:
 
 
 class TestBundleReasoningDegraded:
-    """``reasoning=None`` no rompe; ClinicalImpression nota 'degradado'."""
+    """``reasoning=None`` does not break; ClinicalImpression notes 'degradado'."""
 
-    def test_clinical_impression_nota_degradado(self) -> None:
+    def test_clinical_impression_notes_degraded(self) -> None:
         bundle = to_bundle(
             _result_bppv(reasoning=None),
             _features_bppv(),
@@ -374,7 +374,7 @@ class TestBundleReasoningDegraded:
         notes_text = " ".join(n["text"] for n in ci.get("note", []))
         assert "degradado" in notes_text.lower()
 
-    def test_extension_reasoner_degraded_emitida(self) -> None:
+    def test_extension_reasoner_degraded_emitted(self) -> None:
         bundle = to_bundle(
             _result_bppv(reasoning=None),
             _features_bppv(),
@@ -388,7 +388,7 @@ class TestBundleReasoningDegraded:
         assert len(reasoner_exts) == 1
         assert reasoner_exts[0]["valueBoolean"] is True
 
-    def test_con_reasoning_no_hay_extension_degraded(self) -> None:
+    def test_with_reasoning_no_degraded_extension(self) -> None:
         r = ReasonerOutput(
             explanation="BPPV típico.",
             reconciliation="Concuerda con features.",
@@ -404,20 +404,20 @@ class TestBundleReasoningDegraded:
             e for e in exts if e["url"].endswith("extension-reasoner-degraded")
         ]
         assert reasoner_exts == []
-        # y la nota SÍ lleva la explicación
+        # and the note DOES carry the explanation
         notes_text = " ".join(n["text"] for n in ci.get("note", []))
         assert "BPPV típico" in notes_text
 
 
 # =========================================================================
-# 4. Referencias entre recursos resuelven
+# 4. Cross-resource references resolve
 # =========================================================================
 
 
-class TestBundleReferenciasResuelven:
-    """Toda referencia ``urn:uuid:...`` apunta a un recurso del bundle."""
+class TestBundleReferencesResolve:
+    """Every ``urn:uuid:...`` reference points at a resource in the bundle."""
 
-    def test_todas_las_referencias_resuelven(self) -> None:
+    def test_all_references_resolve(self) -> None:
         bundle = to_bundle(
             _result_red_flag(), _features_bppv(), _audit(urgency=Urgency.inmediata)
         )
@@ -429,21 +429,21 @@ class TestBundleReferenciasResuelven:
             assert ref.startswith("urn:uuid:")
             target = ref.removeprefix("urn:uuid:")
             assert target in ids_in_bundle, (
-                f"Referencia huérfana: {ref} (no hay recurso con id {target})"
+                f"Orphan reference: {ref} (no resource with id {target})"
             )
 
-    def test_questionnaire_response_referencia_cuestionario(self) -> None:
+    def test_questionnaire_response_references_questionnaire(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         qr = _resources_by_type(bundle)["QuestionnaireResponse"][0]
         q = _resources_by_type(bundle)["Questionnaire"][0]
         assert qr["questionnaire"] == f"urn:uuid:{q['id']}"
 
-    def test_todos_los_recursos_referencian_patient_placeholder(self) -> None:
+    def test_all_resources_reference_patient_placeholder(self) -> None:
         bundle = to_bundle(
             _result_red_flag(), _features_bppv(), _audit(urgency=Urgency.inmediata)
         )
         patient_id = _resources_by_type(bundle)["Patient"][0]["id"]
-        # Todos los recursos que tienen `subject` o `patient` apuntan al placeholder
+        # Every resource with `subject` or `patient` points at the placeholder
         for entry in bundle["entry"]:
             r = entry["resource"]
             rt = r["resourceType"]
@@ -456,66 +456,66 @@ class TestBundleReferenciasResuelven:
                 "Flag",
             }:
                 assert subj == f"urn:uuid:{patient_id}", (
-                    f"{rt}.subject referencia {subj}, no al patient placeholder"
+                    f"{rt}.subject references {subj}, not the patient placeholder"
                 )
             if rt == "DetectedIssue":
                 assert pat == f"urn:uuid:{patient_id}", (
-                    f"DetectedIssue.patient referencia {pat}, no al patient placeholder"
+                    f"DetectedIssue.patient references {pat}, not the patient placeholder"
                 )
 
 
 # =========================================================================
-# 5. Determinismo
+# 5. Determinism
 # =========================================================================
 
 
-class TestBundleDeterminismo:
-    """Mismo input → mismo bundle (IDs derivados del case_id)."""
+class TestBundleDeterminism:
+    """Same input → same bundle (IDs derived from case_id)."""
 
-    def test_mismo_case_id_mismo_bundle(self) -> None:
+    def test_same_case_id_same_bundle(self) -> None:
         result = _result_bppv(case_id="case-det-001")
         features = _features_bppv()
         audit = _audit()
         b1 = to_bundle(result, features, audit)
         b2 = to_bundle(result, features, audit)
-        # Mismo id de bundle
+        # Same bundle id
         assert b1["id"] == b2["id"]
-        # Misma cantidad de entries y mismos resource ids
+        # Same number of entries and same resource ids
         ids1 = sorted(e["resource"]["id"] for e in b1["entry"])
         ids2 = sorted(e["resource"]["id"] for e in b2["entry"])
         assert ids1 == ids2
 
-    def test_distinto_case_id_distinto_bundle(self) -> None:
+    def test_different_case_id_different_bundle(self) -> None:
         b1 = to_bundle(_result_bppv(case_id="case-A"), _features_bppv(), _audit())
         b2 = to_bundle(_result_bppv(case_id="case-B"), _features_bppv(), _audit())
         assert b1["id"] != b2["id"]
-        # No se solapan resource ids (urn:uuid: distintos)
+        # Resource ids do not overlap (distinct urn:uuid:)
         ids1 = {e["resource"]["id"] for e in b1["entry"]}
         ids2 = {e["resource"]["id"] for e in b2["entry"]}
         assert ids1.isdisjoint(ids2)
 
-    def test_sin_uuid4_aleatorio(self) -> None:
-        """Los IDs del bundle son uuid5 (formato uuid canónico con guiones)."""
+    def test_no_random_uuid4(self) -> None:
+        """Bundle IDs are uuid5 (canonical hyphenated uuid format)."""
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
-        # Formato uuid canónico: 8-4-4-4-12 hex chars.
+        # Canonical uuid format: 8-4-4-4-12 hex chars.
         uuid_re = re.compile(
             r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         )
         for entry in bundle["entry"]:
             assert uuid_re.match(entry["resource"]["id"]), (
-                f"ID {entry['resource']['id']!r} no parece uuid canónico"
+                f"ID {entry['resource']['id']!r} does not look like a canonical uuid"
             )
 
 
 # =========================================================================
-# 6. Negativo: pureza y aislamiento de imports
+# 6. Negative: purity and import isolation
 # =========================================================================
 
 
-class TestFhirPureza:
-    """``fhir`` es pura: no muta, no hace I/O, solo importa ``contracts``."""
+class TestFhirPurity:
+    """``fhir`` is pure: no mutation, no I/O, only imports ``contracts``."""
 
-    def test_to_bundle_no_muta_input(self) -> None:
+    def test_to_bundle_does_not_mutate_input(self) -> None:
         result = _result_bppv()
         features = _features_bppv()
         audit = _audit()
@@ -528,8 +528,8 @@ class TestFhirPureza:
         assert features.model_dump_json() == features_json
         assert audit.model_dump_json() == audit_json
 
-    def test_to_bundle_es_pura_llamadas_repetidas(self) -> None:
-        """Mismo input, llamadas repetidas → mismo output."""
+    def test_to_bundle_is_pure_repeated_calls(self) -> None:
+        """Same input, repeated calls → same output."""
         result = _result_bppv(case_id="case-pure")
         features = _features_bppv()
         audit = _audit()
@@ -537,11 +537,11 @@ class TestFhirPureza:
         b2 = to_bundle(result, features, audit)
         assert b1 == b2
 
-    def test_fhir_solo_importa_contracts(self) -> None:
-        """Regla dura del mapa: ``fhir`` solo importa ``contracts`` (+ stdlib).
+    def test_fhir_only_imports_contracts(self) -> None:
+        """Hard rule of the module map: ``fhir`` only imports ``contracts`` (+ stdlib).
 
-        Verificamos por AST que no haya imports de submódulos prohibidos
-        de ``clinibrium``.
+        We verify via AST that there are no imports of forbidden
+        ``clinibrium`` submodules.
         """
         fhir_dir = Path(__file__).resolve().parents[1] / "clinibrium" / "fhir"
         forbidden_submodules = {
@@ -564,31 +564,31 @@ class TestFhirPureza:
                     if node.module and node.module.startswith("clinibrium."):
                         mod_root = node.module.split(".")[1]
                         if mod_root != "fhir" and mod_root != "contracts":
-                            # cualquier otro submódulo de clinibrium está prohibido
+                            # any other clinibrium submodule is forbidden
                             full = ".".join(node.module.split(".")[:2])
                             assert full not in forbidden_submodules, (
-                                f"{py_file.name}: import prohibido "
-                                f"de {node.module}"
+                                f"{py_file.name}: forbidden import "
+                                f"of {node.module}"
                             )
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name.startswith("clinibrium."):
                             mod_root = alias.name.split(".")[1]
                             assert mod_root in {"fhir", "contracts"}, (
-                                f"{py_file.name}: import prohibido "
-                                f"de {alias.name}"
+                                f"{py_file.name}: forbidden import "
+                                f"of {alias.name}"
                             )
 
 
 # =========================================================================
-# 7. Detalles estructurales del Questionnaire
+# 7. Structural details of the Questionnaire
 # =========================================================================
 
 
-class TestQuestionnaireEstructura:
-    """Verifica que el Questionnaire tiene la forma R4 + SDC esperada."""
+class TestQuestionnaireStructure:
+    """Verifies the Questionnaire has the expected R4 + SDC shape."""
 
-    def test_questionnaire_es_recurso_r4(self) -> None:
+    def test_questionnaire_is_r4_resource(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         q = _resources_by_type(bundle)["Questionnaire"][0]
         assert q["resourceType"] == "Questionnaire"
@@ -596,39 +596,39 @@ class TestQuestionnaireEstructura:
         assert "url" in q
         assert "version" in q
         assert "item" in q
-        assert len(q["item"]) >= 5  # representativo, no las 50
+        assert len(q["item"]) >= 5  # representative, not all 50
 
-    def test_questionnaire_tiene_enable_when(self) -> None:
-        """Al menos un branch con enableWhen (SDC IG)."""
+    def test_questionnaire_has_enable_when(self) -> None:
+        """At least one branch with enableWhen (SDC IG)."""
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         q = _resources_by_type(bundle)["Questionnaire"][0]
         items_with_branch = [
             it for it in q["item"] if "enableWhen" in it
         ]
         assert len(items_with_branch) >= 1
-        # Cada item con enableWhen tiene enableBehavior
+        # Every item with enableWhen has enableBehavior
         for it in items_with_branch:
             assert "enableBehavior" in it
 
-    def test_questionnaire_response_items_no_vacios(self) -> None:
+    def test_questionnaire_response_items_not_empty(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         qr = _resources_by_type(bundle)["QuestionnaireResponse"][0]
         assert qr["status"] == "completed"
-        # BPPV case: muchos features con valor → muchos items
+        # BPPV case: many features with values → many items
         assert len(qr["item"]) >= 5
-        # cada item tiene al menos un answer
+        # every item has at least one answer
         for it in qr["item"]:
             assert "answer" in it
             assert len(it["answer"]) >= 1
 
 
 # =========================================================================
-# 8. AuditEvent (perfil CL Auditoria)
+# 8. AuditEvent (CL Auditoria profile)
 # =========================================================================
 
 
 class TestAuditEventClinibrium:
-    """El AuditEvent tiene la forma R4 + perfil CL Auditoria."""
+    """The AuditEvent has the R4 shape + CL Auditoria profile."""
 
     def test_audit_event_meta_profile_cl(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
@@ -640,17 +640,17 @@ class TestAuditEventClinibrium:
             for p in ae["meta"].get("profile", [])
         )
 
-    def test_audit_event_quien_que_cuando(self) -> None:
+    def test_audit_event_who_what_when(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         ae = _resources_by_type(bundle)["AuditEvent"][0]
         # type + subtype
         assert ae["type"]["code"] == "pipeline_evaluation"
-        # recorded = occurred_at del AuditEvent
+        # recorded = the AuditEvent's occurred_at
         assert ae["recorded"].startswith("2026-07-10T12:00:00")
-        # agent con who
+        # agent with who
         assert len(ae["agent"]) >= 1
         assert ae["agent"][0]["who"]["reference"].startswith("urn:uuid:")
-        # entity con detail (input_features_hash, urgency, red_flag_activa,
+        # entity with detail (input_features_hash, urgency, red_flag_activa,
         # model_used, reasoner_status)
         detail_types = {d["type"] for d in ae["entity"][0]["detail"]}
         assert "input_features_hash" in detail_types
@@ -659,7 +659,7 @@ class TestAuditEventClinibrium:
         assert "model_used" in detail_types
         assert "reasoner_status" in detail_types
 
-    def test_audit_event_reasoner_status_ok_con_reasoner(self) -> None:
+    def test_audit_event_reasoner_status_ok_with_reasoner(self) -> None:
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         ae = _resources_by_type(bundle)["AuditEvent"][0]
         status = next(
@@ -667,7 +667,7 @@ class TestAuditEventClinibrium:
         )
         assert status["valueString"] == "ok"
 
-    def test_audit_event_reasoner_status_degraded_sin_model(self) -> None:
+    def test_audit_event_reasoner_status_degraded_without_model(self) -> None:
         bundle = to_bundle(
             _result_bppv(reasoning=None),
             _features_bppv(),
@@ -681,15 +681,15 @@ class TestAuditEventClinibrium:
 
 
 # =========================================================================
-# 9. Integridad tamper-evident — bundle_sha256
+# 9. Tamper-evident integrity — bundle_sha256
 # =========================================================================
 
 
 class TestBundleIntegrity:
-    """``bundle_sha256``: hash canónico para verificación de integridad."""
+    """``bundle_sha256``: canonical hash for integrity verification."""
 
-    def test_mismo_bundle_mismo_hash(self) -> None:
-        """Mismo bundle → mismo hash SHA-256 hex de 64 chars."""
+    def test_same_bundle_same_hash(self) -> None:
+        """Same bundle → same 64-char hex SHA-256 hash."""
         from clinibrium.fhir import bundle_sha256
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         h1 = bundle_sha256(bundle)
@@ -698,16 +698,16 @@ class TestBundleIntegrity:
         assert len(h1) == 64
         assert all(c in "0123456789abcdef" for c in h1)
 
-    def test_bundle_alterado_hash_distinto(self) -> None:
-        """Alterar el bundle (modificar timestamp) → hash distinto."""
+    def test_tampered_bundle_different_hash(self) -> None:
+        """Altering the bundle (modifying timestamp) → different hash."""
         from clinibrium.fhir import bundle_sha256
         bundle1 = to_bundle(_result_bppv(), _features_bppv(), _audit())
         bundle2 = to_bundle(_result_bppv(), _features_bppv(), _audit())
         bundle2["timestamp"] = "2020-01-01T00:00:00+00:00"
         assert bundle_sha256(bundle1) != bundle_sha256(bundle2)
 
-    def test_hash_determinista_entre_llamadas(self) -> None:
-        """Mismos inputs a to_bundle → mismo hash (determinismo)."""
+    def test_hash_deterministic_across_calls(self) -> None:
+        """Same inputs to to_bundle → same hash (determinism)."""
         from clinibrium.fhir import bundle_sha256
         result = _result_bppv(case_id="case-hash-det")
         features = _features_bppv()
@@ -716,27 +716,27 @@ class TestBundleIntegrity:
         b2 = to_bundle(result, features, audit)
         assert bundle_sha256(b1) == bundle_sha256(b2)
 
-    def test_canonical_coincide_con_json_stringify_de_js(self) -> None:
-        """El canónico debe ser byte-idéntico al ``JSON.stringify`` de JS.
+    def test_canonical_matches_js_json_stringify(self) -> None:
+        """The canonical form must be byte-identical to JS ``JSON.stringify``.
 
-        Es la propiedad que hace que el botón "Verificar" del frontend
-        recompute el MISMO hash (✓ íntegro). El punto frágil: un float
-        entero (``5.0``) — Python lo emitiría ``"5.0"`` y JS ``"5"``.
-        Replicamos aquí el ``jsonCanonical`` del cliente y exigimos match.
+        This is the property that lets the frontend's "Verify" button
+        recompute the SAME hash (✓ intact). The fragile spot: an integral
+        float (``5.0``) — Python would emit ``"5.0"`` and JS ``"5"``.
+        We replicate the client's ``jsonCanonical`` here and require a match.
         """
         import hashlib
         import json
 
         from clinibrium.fhir.mapping import _canonical_json, bundle_sha256
 
-        # _js_number: float entero sin ".0"; fraccionario como shortest-repr.
+        # _js_number: integral float without ".0"; fractional as shortest-repr.
         assert _canonical_json(5.0) == "5"
         assert _canonical_json(5.5) == "5.5"
         assert _canonical_json({"b": 1, "a": 2.0}) == '{"a":2,"b":1}'
 
         def js_canonical(obj: object) -> str:
-            # Réplica exacta de jsonCanonical (ClinicalCaseReceipt.tsx):
-            # números vía la representación de JS (enteros sin ".0").
+            # Exact replica of jsonCanonical (ClinicalCaseReceipt.tsx):
+            # numbers via the JS representation (integers without ".0").
             if obj is None or not isinstance(obj, (dict, list)):
                 if isinstance(obj, bool):
                     return "true" if obj else "false"
@@ -755,7 +755,7 @@ class TestBundleIntegrity:
                 + "}"
             )
 
-        # Bundle con un float entero (nystagmus_latency_s=5.0 en el preset).
+        # Bundle with an integral float (nystagmus_latency_s=5.0 in the preset).
         bundle = to_bundle(_result_bppv(), _features_bppv(), _audit())
         client_hash = hashlib.sha256(
             js_canonical(bundle).encode("utf-8")

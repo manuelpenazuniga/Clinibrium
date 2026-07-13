@@ -1,4 +1,4 @@
-"""TB1.6 — SHAP local del gate de peligro (acotado, un solo nodo)."""
+"""TB1.6 — local SHAP of the danger gate (bounded, single node)."""
 import dataclasses
 import functools
 
@@ -29,8 +29,8 @@ def test_shap_keys_are_known_features_and_top_k() -> None:
 
 
 def test_central_case_risk_features_push_toward_danger() -> None:
-    """En un caso central, alguna feature de riesgo debe contribuir POSITIVO
-    (empujar hacia peligro) — la explicación es coherente con la predicción."""
+    """In a central case, some risk feature must contribute POSITIVELY
+    (push toward danger) — the explanation is coherent with the prediction."""
     model = _model()
     central = {
         "timing_pattern": "acute_continuous", "head_impulse": "normal",
@@ -41,14 +41,14 @@ def test_central_case_risk_features_push_toward_danger() -> None:
     shap = model.explain_gate(central, top_k=8)
     risk = set(FEATURES.risk_features)
     risk_contribs = [v for k, v in shap.items() if k in risk]
-    assert risk_contribs, "esperaba features de riesgo entre las top-k"
-    assert max(risk_contribs) > 0, "alguna feature de riesgo debe empujar a peligro"
+    assert risk_contribs, "expected risk features among the top-k"
+    assert max(risk_contribs) > 0, "some risk feature must push toward danger"
 
 
 def test_shap_is_single_node_no_cross_aggregation() -> None:
-    """Contrato de honestidad: explain_gate explica SOLO el gate (un nodo),
-    no agrega a través del árbol. Verificamos que devuelve un único dict plano
-    de features (no estructura por nodo/clase)."""
+    """Honesty contract: explain_gate explains ONLY the gate (one node), it
+    does not aggregate across the tree. We verify it returns a single flat
+    dict of features (no per-node/per-class structure)."""
     model = _model()
     shap = model.explain_gate({"trigger": "spontaneous"})
     assert isinstance(shap, dict)

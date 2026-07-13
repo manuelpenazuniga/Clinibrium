@@ -28,8 +28,8 @@ export const FORCED_ACTION_LABELS: Record<string, string> = {
 };
 
 /**
- * Naturaleza de cada etapa del pipeline — es la tesis del producto hecha
- * dato: las capas deterministas fijan la seguridad, ML/Claude son aditivos.
+ * Nature of each pipeline stage — the product thesis turned into data:
+ * the deterministic layers set safety, ML/Claude are additive.
  */
 export type StageKind = "deterministic" | "additive" | "seal" | "terminal";
 
@@ -59,7 +59,7 @@ const TRIGGER_CHIPS: Record<string, string> = {
   none: "sin gatillo",
 };
 
-/** Chips legibles para las tarjetas de caso — un vistazo clínico honesto. */
+/** Readable chips for the case cards — an honest clinical at-a-glance view. */
 export function featureChips(features: CaseFeatures): string[] {
   const chips: string[] = [];
   if (features.duration) chips.push(DURATION_CHIPS[features.duration] ?? features.duration);

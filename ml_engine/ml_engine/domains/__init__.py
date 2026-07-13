@@ -1,6 +1,6 @@
-"""Configuraciones de dominio (data) que instancian la plataforma ML.
+"""Domain configurations (data) that instantiate the ML platform.
 
-Cada dominio se escribe como un ``Domain`` (FeatureSpec + LabelHierarchy +
-SyntheticSpec) SIN tocar ``ml_engine.core``. Vértigo = instancia #1;
-``toy`` = prueba de agnosticismo (INV-12).
+Each domain is written as a ``Domain`` (FeatureSpec + LabelHierarchy +
+SyntheticSpec) WITHOUT touching ``ml_engine.core``. Vertigo = instance #1;
+``toy`` = agnosticism proof (INV-12).
 """

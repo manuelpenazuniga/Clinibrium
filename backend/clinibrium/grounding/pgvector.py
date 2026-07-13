@@ -1,24 +1,24 @@
-"""`PgvectorGrounding` — retrieval por similitud coseno en pgvector.
+"""`PgvectorGrounding` — cosine-similarity retrieval on pgvector.
 
-AD-10: implementación enriquecida del `Grounding` cuando hay
-PostgreSQL + pgvector disponibles. Cuando la DB no está, la factory
-`get_grounding()` degrada a `InlineGrounding` (path demo confiable,
-mecanismo idéntico al de `ml_client`).
+AD-10: enriched `Grounding` implementation when PostgreSQL + pgvector
+are available. When the DB is absent, the `get_grounding()` factory
+degrades to `InlineGrounding` (reliable demo path, same mechanism as
+`ml_client`).
 
-Notas de diseño:
+Design notes:
 
-- **Embedder liviano y determinista** (hashing trick / bag-of-words a
-  vector denso de dimensión fija). Cero torch, cero APIs de red, cero
-  estado oculto. La calidad del retrieval es **deliberadamente
-  secundaria**: RAG no es demo-crítico. Lo que importa es demostrar
-  la **mecánica pgvector** (DDL + ingest + top-k por coseno). En
-  producción se reemplaza por un modelo de embeddings real
-  (`SentenceTransformers`, `Ollama`, etc.) — el contrato de la
-  interfaz `Grounding` no cambia.
-- **Ingesta idempotente** desde `inline.CORPUS` (mismo source of truth).
-- **Degradación amplia**: si la DB no responde o el embedder falla, los
-  métodos que la necesitan NO rompen el gate — `retrieve()` devuelve
-  lista vacía y `ingest()` reporta el error en logs.
+- **Lightweight, deterministic embedder** (hashing trick / bag-of-words
+  to a fixed-dimension dense vector). Zero torch, zero network APIs,
+  zero hidden state. Retrieval quality is **deliberately secondary**:
+  RAG is not demo-critical. What matters is demonstrating the
+  **pgvector mechanics** (DDL + ingest + top-k by cosine). In
+  production it gets replaced by a real embeddings model
+  (`SentenceTransformers`, `Ollama`, etc.) — the `Grounding`
+  interface contract does not change.
+- **Idempotent ingestion** from `inline.CORPUS` (same source of truth).
+- **Broad degradation**: if the DB does not answer or the embedder
+  fails, the methods that need it do NOT break the gate — `retrieve()`
+  returns an empty list and `ingest()` reports the error in logs.
 """
 from __future__ import annotations
 
@@ -37,14 +37,15 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Embedder: hashing trick a vector denso (256 dims) + L2 norm.
+# Embedder: hashing trick to a dense vector (256 dims) + L2 norm.
 # ---------------------------------------------------------------------------
 
 EMBED_DIM = 256
 
-# Stopwords mínimas (español) para reducir peso de tokens que ensucian
-# la bolsa. NO es exhaustivo — es solo para que la similitud no se
-# concentre en "el/la/de/que" cuando hay términos clínicos.
+# Minimal (Spanish) stopwords to reduce the weight of tokens that pollute
+# the bag. NOT exhaustive — just enough so similarity does not concentrate
+# on "el/la/de/que" when clinical terms are present. (Spanish because the
+# corpus text is in Spanish.)
 _STOPWORDS: frozenset[str] = frozenset(
     {
         "a", "al", "algo", "algunas", "algunos", "ante", "antes", "como",
@@ -68,7 +69,7 @@ _TOKEN_RE = re.compile(r"[a-záéíóúñü]+", flags=re.IGNORECASE)
 
 
 def _tokenize(text: str) -> list[str]:
-    """Tokeniza a lowercase, filtra stopwords y tokens de 1 sola letra."""
+    """Tokenizes to lowercase, filters stopwords and very short tokens."""
     out: list[str] = []
     for match in _TOKEN_RE.finditer(text.lower()):
         tok = match.group(0)
@@ -81,10 +82,10 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _hash_to_dim(token: str, dim: int = EMBED_DIM) -> int:
-    """Hash determinista de un token → índice en [0, dim).
+    """Deterministic hash of a token → index in [0, dim).
 
-    Usa SHA-256, toma los primeros 4 bytes como uint32 little-endian,
-    y los mapea módulo `dim`. Estable entre procesos y plataformas.
+    Uses SHA-256, takes the first 4 bytes as a little-endian uint32,
+    and maps them modulo `dim`. Stable across processes and platforms.
     """
     h = hashlib.sha256(token.encode("utf-8")).digest()
     val = int.from_bytes(h[:4], byteorder="little", signed=False)
@@ -92,18 +93,18 @@ def _hash_to_dim(token: str, dim: int = EMBED_DIM) -> int:
 
 
 def embed_text(text: str, dim: int = EMBED_DIM) -> list[float]:
-    """Vector denso de dimensión fija por hashing-trick (TF + L2 norm).
+    """Fixed-dimension dense vector via hashing trick (TF + L2 norm).
 
-    Determinista: mismo `text` y misma `dim` ⇒ mismo vector, en cualquier
-    proceso / plataforma. Es un embedder de **bolsa de palabras hasheada**
-    — útil para mostrar la mecánica de pgvector, NO para retrieval de
-    calidad clínica. Ver docstring del módulo.
+    Deterministic: same `text` and same `dim` ⇒ same vector, in any
+    process / platform. It is a **hashed bag-of-words** embedder —
+    useful to demonstrate pgvector mechanics, NOT for clinical-quality
+    retrieval. See module docstring.
     """
     counts = [0.0] * dim
     for tok in _tokenize(text):
         counts[_hash_to_dim(tok, dim)] += 1.0
 
-    # L2 norm (vector zero si counts=0)
+    # L2 norm (zero vector if counts=0)
     norm = math.sqrt(sum(c * c for c in counts))
     if norm == 0.0:
         return counts
@@ -111,19 +112,19 @@ def embed_text(text: str, dim: int = EMBED_DIM) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
-# Construcción del texto de query (features + diagnósticos candidatos).
+# Query text construction (features + candidate diagnoses).
 # ---------------------------------------------------------------------------
 
 
 def _features_to_text(features: CaseFeatures) -> str:
-    """Convierte los campos seteados de `CaseFeatures` a una cadena.
+    """Converts the set fields of `CaseFeatures` into a string.
 
-    Solo se incluyen los campos con valor distinto al default (i.e. con
-    información clínica). Enums se serializan a su `.value`; sets se
-    iteran; bools se serializan como sus nombres.
+    Only fields whose value differs from the default (i.e. carrying
+    clinical information) are included. Enums serialize to their
+    `.value`; sets are iterated; bools serialize as their names.
     """
     parts: list[str] = []
-    # `model_fields` es estable (orden de declaración en Pydantic v2).
+    # `model_fields` is stable (declaration order in Pydantic v2).
     for fname in type(features).model_fields:
         value = getattr(features, fname)
         if value is None:
@@ -148,7 +149,7 @@ def _features_to_text(features: CaseFeatures) -> str:
 
 
 def _candidates_to_text(candidates: DifferentialResult) -> str:
-    """Top diagnósticos candidatos → texto, para anclar el retrieval."""
+    """Top candidate diagnoses → text, to anchor the retrieval."""
     return " ".join(c.diagnosis.value for c in candidates.candidates[:5])
 
 
@@ -156,26 +157,26 @@ def build_query_text(
     candidates: DifferentialResult,
     features: CaseFeatures,
 ) -> str:
-    """Compone la query de retrieval: features estructuradas + dx candidatos."""
+    """Composes the retrieval query: structured features + candidate dx."""
     return f"{_features_to_text(features)} {_candidates_to_text(candidates)}".strip()
 
 
 # ---------------------------------------------------------------------------
-# Conexión asyncpg + pgvector.
+# asyncpg + pgvector connection.
 # ---------------------------------------------------------------------------
 
 _TABLE = "clinibrium_grounding_chunks"
 
 
 def _to_pgvector_literal(vec: Sequence[float]) -> str:
-    """Serializa un vector a la sintaxis literal de pgvector: `[v1,v2,...]`."""
+    """Serializes a vector to pgvector's literal syntax: `[v1,v2,...]`."""
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
 async def _connect(database_url: str):  # type: ignore[no-untyped-def]
-    """Abre una conexión asyncpg y registra el codec de pgvector.
+    """Opens an asyncpg connection and registers the pgvector codec.
 
-    Devuelve la conexión. Si falla, lanza — el caller degrada.
+    Returns the connection. On failure it raises — the caller degrades.
     """
     import asyncpg
     from pgvector.asyncpg import register_vector
@@ -184,14 +185,14 @@ async def _connect(database_url: str):  # type: ignore[no-untyped-def]
     try:
         await register_vector(conn)
     except Exception:  # noqa: BLE001
-        # Si pgvector no está instalado en el server, cerramos limpio.
+        # If pgvector is not installed on the server, close cleanly.
         await conn.close()
         raise
     return conn
 
 
 async def _ensure_schema(conn) -> None:  # type: ignore[no-untyped-def]
-    """Crea la extensión y la tabla si no existen. Idempotente."""
+    """Creates the extension and table if they do not exist. Idempotent."""
     await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
     await conn.execute(
         f"""
@@ -207,10 +208,10 @@ async def _ensure_schema(conn) -> None:  # type: ignore[no-untyped-def]
 
 
 async def _fetch_table_columns(conn) -> set[str]:  # type: ignore[no-untyped-def]
-    """Devuelve el set de columnas existentes en `_TABLE`.
+    """Returns the set of existing columns in `_TABLE`.
 
-    Se usa en `ingest()` para tolerar tablas creadas por versiones
-    previas del módulo (esquema evolving durante el hackathon).
+    Used in `ingest()` to tolerate tables created by previous versions
+    of the module (schema evolving during the hackathon).
     """
     rows = await conn.fetch(
         "SELECT column_name FROM information_schema.columns "
@@ -221,12 +222,12 @@ async def _fetch_table_columns(conn) -> set[str]:  # type: ignore[no-untyped-def
 
 
 # ---------------------------------------------------------------------------
-# API pública
+# Public API
 # ---------------------------------------------------------------------------
 
 
 def _corpus_to_records() -> list[dict[str, object]]:
-    """Aplana `CORPUS` a una lista de dicts (uno por chunk)."""
+    """Flattens `CORPUS` into a list of dicts (one per chunk)."""
     records: list[dict[str, object]] = []
     for dx, chunks in CORPUS.items():
         for chunk in chunks:
@@ -246,22 +247,22 @@ async def ingest(
     *,
     corpus: dict[Diagnosis, list[GroundingChunk]] | None = None,
 ) -> int:
-    """Ingesta el corpus en la tabla pgvector. Idempotente.
+    """Ingests the corpus into the pgvector table. Idempotent.
 
-    Estrategia:
-      1. Abre conexión + registra codec de pgvector.
-      2. Asegura esquema (extensión + tabla). Idempotente.
-      3. UPSERT por `source_id` (clave única) ⇒ llamar `ingest()` varias
-         veces es seguro y deja la tabla consistente con el `CORPUS`.
+    Strategy:
+      1. Opens a connection + registers the pgvector codec.
+      2. Ensures the schema (extension + table). Idempotent.
+      3. UPSERT by `source_id` (unique key) ⇒ calling `ingest()` multiple
+         times is safe and leaves the table consistent with `CORPUS`.
 
-    Devuelve la cantidad de chunks escritos. Si la DB no responde,
-    **degrada elegante** (log + return 0) — no rompe el gate.
+    Returns the number of chunks written. If the DB does not answer,
+    it **degrades gracefully** (log + return 0) — does not break the gate.
     """
     try:
         conn = await _connect(database_url)
     except Exception as exc:  # noqa: BLE001
         logger.info(
-            "grounding.ingest: DB no disponible (%s) → skip ingest",
+            "grounding.ingest: DB unavailable (%s) → skip ingest",
             type(exc).__name__,
         )
         return 0
@@ -279,26 +280,26 @@ async def ingest(
             for chunk in chunks
         ]
 
-        # Detección de esquema tolerante: si la tabla ya existía con
-        # `embedding VECTOR(N)`, comparamos dimensión.
+        # Tolerant schema detection: if the table already existed with
+        # `embedding VECTOR(N)`, we compare dimensions.
         columns = await _fetch_table_columns(conn)
-        # No forzamos verificación de dimensión en este path: si N no
-        # coincide, la query de ingest fallará con un error de tipo
-        # pgvector y la capturamos abajo como degradación.
+        # We do not force dimension verification on this path: if N does
+        # not match, the ingest query will fail with a pgvector type
+        # error and we catch it below as degradation.
 
         if "embedding" not in columns:
-            # Re-crear la tabla con la dimensión actual del embedder
-            # no es trivial sin DROP; confiamos en _ensure_schema para
-            # una tabla fresca. Si la tabla existía sin embedding,
-            # creamos la columna ahora.
+            # Re-creating the table with the embedder's current dimension
+            # is not trivial without DROP; we rely on _ensure_schema for
+            # a fresh table. If the table existed without an embedding
+            # column, we create it now.
             await conn.execute(
                 f"ALTER TABLE {_TABLE} ADD COLUMN embedding VECTOR({EMBED_DIM})"
             )
 
-        # UPSERT: si la fila con ese source_id ya existe, la actualizamos.
-        # `ON CONFLICT (source_id) DO UPDATE` requiere pgvector pueda
-        # reasignar el vector — funciona porque la columna es del tipo
-        # `vector` registrado por `register_vector`.
+        # UPSERT: if a row with that source_id already exists, update it.
+        # `ON CONFLICT (source_id) DO UPDATE` requires pgvector to be able
+        # to reassign the vector — it works because the column is of the
+        # `vector` type registered by `register_vector`.
         for rec in records:
             await conn.execute(
                 f"""
@@ -317,7 +318,7 @@ async def ingest(
         return len(records)
     except Exception as exc:  # noqa: BLE001
         logger.info(
-            "grounding.ingest: error en ingesta (%s) → skip",
+            "grounding.ingest: ingestion error (%s) → skip",
             type(exc).__name__,
         )
         return 0
@@ -330,7 +331,7 @@ async def _retrieve_raw(
     query_vec: Sequence[float],
     k: int,
 ) -> list[dict[str, object]]:
-    """Top-k por similitud coseno (operador `<=>` de pgvector)."""
+    """Top-k by cosine similarity (pgvector's `<=>` operator)."""
     conn = await _connect(database_url)
     try:
         await _ensure_schema(conn)
@@ -359,19 +360,19 @@ async def _retrieve_raw(
 
 
 class PgvectorGrounding:
-    """`Grounding` con retrieval por similitud coseno en pgvector.
+    """`Grounding` with cosine-similarity retrieval on pgvector.
 
-    Expone DOS puntos de entrada equivalentes:
+    Exposes TWO equivalent entry points:
 
-    - `retrieve(...)` — **sync**, satisface el `Protocol Grounding`.
-      Internamente lanza un `asyncio.run()`. Pensado para tests, CLI,
-      y contextos sync. NO usar dentro de un event loop activo.
-    - `retrieve_async(...)` — async, para FastAPI / cualquier event
-      loop existente. Un solo `await`, sin loop anidado.
+    - `retrieve(...)` — **sync**, satisfies the `Grounding` Protocol.
+      Internally spawns an `asyncio.run()`. Meant for tests, CLI, and
+      sync contexts. Do NOT use inside an active event loop.
+    - `retrieve_async(...)` — async, for FastAPI / any existing event
+      loop. A single `await`, no nested loop.
 
-    En cualquier caso: si la DB no está disponible o falla, **degrada
-    elegante a `[]`** — nunca levanta. Esa es la invariante de la
-    interfaz `Grounding` (path demo confiable).
+    Either way: if the DB is unavailable or fails, it **degrades
+    gracefully to `[]`** — never raises. That is the invariant of the
+    `Grounding` interface (reliable demo path).
     """
 
     def __init__(self, database_url: str) -> None:
@@ -379,11 +380,11 @@ class PgvectorGrounding:
         self._available: bool | None = None  # lazy probe
 
     async def _probe(self) -> bool:
-        """Chequeo de disponibilidad lazy: ping + ver tabla.
+        """Lazy availability check: ping + check the table.
 
-        Cachea el resultado mientras la DB responda. Si la primera
-        probe falla, queda en `_available=False` y reintenta en cada
-        `retrieve()` (la DB puede levantarse después del boot).
+        Caches the result while the DB answers. If the first probe
+        fails, it stays at `_available=False` and retries on every
+        `retrieve()` (the DB may come up after boot).
         """
         if self._available is True:
             return True
@@ -397,7 +398,7 @@ class PgvectorGrounding:
                 await conn.close()
         except Exception as exc:  # noqa: BLE001
             logger.info(
-                "PgvectorGrounding: DB no disponible (%s) → degrada a []",
+                "PgvectorGrounding: DB unavailable (%s) → degrades to []",
                 type(exc).__name__,
             )
             self._available = False
@@ -409,7 +410,7 @@ class PgvectorGrounding:
         features: CaseFeatures,
         k: int = 4,
     ) -> list[GroundingChunk]:
-        """Versión async del retrieval (para usar dentro de un event loop)."""
+        """Async version of the retrieval (for use inside an event loop)."""
         if not await self._probe():
             return []
         query_text = build_query_text(candidates, features)
@@ -446,18 +447,18 @@ class PgvectorGrounding:
         features: CaseFeatures,
         k: int = 4,
     ) -> list[GroundingChunk]:
-        """Sync wrapper sobre `retrieve_async` (satisface el Protocol).
+        """Sync wrapper over `retrieve_async` (satisfies the Protocol).
 
-        Lanza un `asyncio.run()` interno. Pensado para uso sync
-        (tests, scripts, gates). En un handler de FastAPI usar
-        `retrieve_async` directamente para no anidar event loops.
+        Spawns an internal `asyncio.run()`. Meant for sync usage
+        (tests, scripts, gates). In a FastAPI handler use
+        `retrieve_async` directly to avoid nesting event loops.
         """
         return asyncio.run(self.retrieve_async(candidates, features, k=k))
 
 
 # ---------------------------------------------------------------------------
-# Helpers de sync (test/dev) — solo para tests. Producen el vector
-# numérico, no requieren DB.
+# Sync helpers (test/dev) — tests only. They produce the numeric
+# vector, no DB required.
 # ---------------------------------------------------------------------------
 
 
@@ -465,14 +466,14 @@ def embed_query_sync(
     candidates: DifferentialResult,
     features: CaseFeatures,
 ) -> list[float]:
-    """Versión sync de construcción de query-embedding (sin DB)."""
+    """Sync version of query-embedding construction (no DB)."""
     return embed_text(build_query_text(candidates, features))
 
 
 def all_chunks_flat(
     corpus: dict[Diagnosis, list[GroundingChunk]],
 ) -> Iterable[tuple[Diagnosis, GroundingChunk]]:
-    """Itera todos los chunks del corpus en orden estable."""
+    """Iterates all corpus chunks in stable order."""
     for dx in Diagnosis:
         if dx in corpus:
             for chunk in corpus[dx]:

@@ -1,13 +1,13 @@
-"""RedFlagEngine determinista — ¿es emergencia? (separado por régimen regulatorio).
+"""Deterministic RedFlagEngine — is it an emergency? (separate due to regulatory regime).
 
-API pública:
+Public API:
   - `evaluate(features)` → `RedFlagResult`
-  - `RULES` (tabla de reglas, editable por el clínico validador)
+  - `RULES` (rule table, editable by the validating clinician)
   - `RedFlagRule`, `AGE_CENTRAL_THRESHOLD`
 
-INV-5: este paquete SOLO importa `contracts`. Nunca `differential_engine`,
-`reasoner`, `ml_client` ni `orchestrator`. Su veredicto no puede ser
-anulado por nadie aguas abajo.
+INV-5: this package ONLY imports `contracts`. Never `differential_engine`,
+`reasoner`, `ml_client` or `orchestrator`. Its verdict cannot be
+overridden by anyone downstream.
 """
 from __future__ import annotations
 

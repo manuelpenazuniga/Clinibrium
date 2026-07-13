@@ -1,11 +1,11 @@
-"""Tests del módulo `reasoner` (T7).
+"""Tests for the `reasoner` module (T7).
 
-Cubre:
-  - INV-2: validador de privacidad (fail-closed)
-  - INV-8: degradación a None en fallo de API
-  - Ruta feliz: reason() con mock del SDK
-  - pick_model: selección Opus vs Haiku
-  - Import separation: reasoner no importa módulos prohibidos
+Covers:
+  - INV-2: privacy validator (fail-closed)
+  - INV-8: degradation to None on API failure
+  - Happy path: reason() with a mocked SDK
+  - pick_model: Opus vs Haiku selection
+  - Import separation: reasoner does not import forbidden modules
 """
 from __future__ import annotations
 
@@ -43,11 +43,11 @@ from clinibrium.reasoner.engine import _LLMReasoning
 
 
 def test_privacy_rejects_field_outside_allowlist() -> None:
-    """Ejercita el build_network_payload REAL (no un helper duplicado): un
-    features cuyo model_dump filtra una clave de PII debe LEVANTAR."""
+    """Exercises the REAL build_network_payload (not a duplicated helper): a
+    features whose model_dump leaks a PII key must RAISE."""
 
     class _LeakyFeatures:
-        """Stub que inyecta una clave fuera del allowlist en el dump."""
+        """Stub that injects a key outside the allowlist into the dump."""
 
         def model_dump(self, mode: str = "json") -> dict:
             payload = CaseFeatures().model_dump(mode="json")
@@ -64,7 +64,7 @@ def test_privacy_allows_only_safe_fields() -> None:
 
 
 def test_build_network_payload_passes_for_valid_features() -> None:
-    """build_network_payload no rechaza un CaseFeatures limpio."""
+    """build_network_payload does not reject a clean CaseFeatures."""
     features = CaseFeatures(nystagmus_direction="torsional_pure")  # type: ignore[arg-type]
     payload = build_network_payload(features)
     assert payload["nystagmus_direction"] == "torsional_pure"
@@ -147,7 +147,7 @@ def _sample_features() -> CaseFeatures:
 
 
 async def test_reason_calls_build_network_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    """INV-2: engine debe armar el prompt SOLO a partir de build_network_payload."""
+    """INV-2: the engine must build the prompt ONLY from build_network_payload."""
     called_with: list[CaseFeatures] = []
 
     def _spy(features: CaseFeatures) -> dict:
@@ -305,8 +305,8 @@ async def test_reason_happy_path_returns_reasoner_output() -> None:
     assert out.model_used == HAIKU
     assert out.reasoner_suggested_urgency == Urgency.ambulatoria
     assert out.grounding_refs == [c.source_id for c in chunks]
-    # Haiku 4.5 NO usa `thinking`: el parámetro debe OMITIRSE (no None).
-    # Pasar `thinking=None` explícito lo rechaza la API con 400
+    # Haiku 4.5 does NOT use `thinking`: the parameter must be OMITTED (not None).
+    # Passing an explicit `thinking=None` is rejected by the API with 400
     # ("thinking: Input should be an object").
     assert "thinking" not in mock_client.messages.parse.call_args.kwargs
 
@@ -331,8 +331,8 @@ async def test_reason_happy_path_uses_opus_with_red_flag() -> None:
 
     assert out is not None
     assert out.model_used == OPUS
-    # Opus 4.8 SÍ usa thinking adaptive (obligatorio {"type": "adaptive"};
-    # `budget_tokens` está deprecado y sería rechazado con 400).
+    # Opus 4.8 DOES use adaptive thinking ({"type": "adaptive"} is mandatory;
+    # `budget_tokens` is deprecated and would be rejected with 400).
     assert mock_client.messages.parse.call_args.kwargs.get("thinking") == {
         "type": "adaptive"
     }
@@ -383,9 +383,9 @@ async def test_reason_handler_no_parse_output_raises_and_returns_none() -> None:
 
 
 async def test_reason_does_not_convert_suggested_urgency_to_binding() -> None:
-    """AD-4/INV-3: reasoner_suggested_urgency es solo una sugerencia.
-    El test verifica que reason() extrae el valor del LLM al campo
-    reasoner_suggested_urgency, NO a urgencia vinculante alguna."""
+    """AD-4/INV-3: reasoner_suggested_urgency is only a suggestion.
+    The test verifies that reason() extracts the LLM's value into the
+    reasoner_suggested_urgency field, NOT into any binding urgency."""
     rf = RedFlagResult(red_flag_activa=False)
     features = _sample_features()
     differential = _sample_differential()
@@ -408,9 +408,9 @@ async def test_reason_does_not_convert_suggested_urgency_to_binding() -> None:
     )
 
     assert out is not None
-    # El reasoner reporta la sugerencia pero NO fija urgencia vinculante
+    # The reasoner reports the suggestion but does NOT set a binding urgency
     assert out.reasoner_suggested_urgency == Urgency.inmediata
-    # reason() NO tiene campo "urgency" — eso es rails
+    # reason() has NO "urgency" field — that belongs to rails
     assert not hasattr(out, "urgency")
 
 
@@ -431,7 +431,7 @@ async def test_reason_returns_none_on_unexpected_exception() -> None:
 
 
 # =========================================================================
-# Import separation (criterio 3 de aceptación)
+# Import separation (acceptance criterion 3)
 # =========================================================================
 
 _FORBIDDEN_REASONER_IMPORTS = {
@@ -466,7 +466,7 @@ def test_reasoner_does_not_import_forbidden_modules() -> None:
                 if mod == forbidden or mod.startswith(forbidden + "."):
                     offenders.append(f"{py_file.name}:{lineno} → {mod}")
     assert not offenders, (
-        "reasoner importó módulos prohibidos:\n  " + "\n  ".join(offenders)
+        "reasoner imported forbidden modules:\n  " + "\n  ".join(offenders)
     )
 
 
@@ -484,7 +484,7 @@ def test_reasoner_only_imports_from_allowed_modules() -> None:
             if not any(mod == a or mod.startswith(a + ".") for a in allowed_roots):
                 offenders.append(f"{py_file.name}:{lineno} → {mod}")
     assert not offenders, (
-        "reasoner importó módulos fuera del allowlist:\n  " + "\n  ".join(offenders)
+        "reasoner imported modules outside the allowlist:\n  " + "\n  ".join(offenders)
     )
 
 

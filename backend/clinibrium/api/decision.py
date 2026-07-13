@@ -1,12 +1,11 @@
-"""Endpoint `POST /api/decision` — intervención humana registrada (AD-4).
+"""`POST /api/decision` endpoint — recorded human intervention (AD-4).
 
-Registra la decisión del médico (aceptar/rechazar) sobre una evaluación
-previa, emitiendo un AuditEvent de tipo ``clinician_decision`` con
-actor=clinician. Esto es la intervención humana significativa que
-requiere la Ley 21.719.
+Records the physician's decision (accept/reject) on a previous evaluation,
+emitting an AuditEvent of type ``clinician_decision`` with actor=clinician.
+This is the meaningful human intervention required by Law 21.719.
 
-NO afecta el pipeline de evaluación — es una acción posterior separada.
-Emitir SU propio AuditEvent NO viola INV-4 (que es por-evaluación).
+Does NOT affect the evaluation pipeline — it is a separate follow-up action.
+Emitting ITS own AuditEvent does NOT violate INV-4 (which is per-evaluation).
 """
 from __future__ import annotations
 
@@ -27,15 +26,15 @@ class DecisionRequest(BaseModel):
 
 @router.post("/api/decision", response_model=AuditEvent)
 async def decision_endpoint(body: DecisionRequest) -> AuditEvent:
-    """Registra la decisión clínica sobre una evaluación previa.
+    """Records the clinical decision on a previous evaluation.
 
     Body:
-        audit_event_id: ID del AuditEvent de la evaluación original.
+        audit_event_id: ID of the AuditEvent of the original evaluation.
         decision: "accept" | "reject".
-        reason: justificación clínica (opcional, texto libre desidentificado).
+        reason: clinical justification (optional, de-identified free text).
 
-    Emite un AuditEvent ``clinician_decision`` con actor=clinician,
-    persistido y devuelto al frontend.
+    Emits a ``clinician_decision`` AuditEvent with actor=clinician,
+    persisted and returned to the frontend.
     """
     decision = body.decision.lower()
     if decision not in ("accept", "reject"):

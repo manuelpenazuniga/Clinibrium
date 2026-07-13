@@ -1,15 +1,16 @@
-"""Evaluación del RedFlagEngine — pura, sin estado, sin I/O.
+"""RedFlagEngine evaluation — pure, stateless, no I/O.
 
-INV-5: este módulo SOLO importa `contracts` y la tabla `RULES` local. NO
-importa `differential_engine`, `reasoner`, `ml_client` ni `orchestrator`.
-El veredicto de `evaluate` no puede ser anulado por nadie aguas abajo.
+INV-5: this module ONLY imports `contracts` and the local `RULES` table. It
+does NOT import `differential_engine`, `reasoner`, `ml_client` or
+`orchestrator`. The verdict of `evaluate` cannot be overridden by anyone
+downstream.
 
-Invariantes de la evaluación:
-  - Mismo `CaseFeatures` ⇒ mismo `RedFlagResult` (puro y determinista).
-  - `red_flag_activa == True` ssi algún hit trae `DERIVAR_URGENTE`.
-    `ESCALAR` / `PRECAUCION_EXAMEN` solos NO activan `red_flag_activa`,
-    pero sí quedan en `forced_actions` del resultado.
-  - El orden de `hits` sigue el orden estable de `RULES`.
+Evaluation invariants:
+  - Same `CaseFeatures` ⇒ same `RedFlagResult` (pure and deterministic).
+  - `red_flag_activa == True` iff some hit carries `DERIVAR_URGENTE`.
+    `ESCALAR` / `PRECAUCION_EXAMEN` alone do NOT activate `red_flag_activa`,
+    but they do end up in the result's `forced_actions`.
+  - The order of `hits` follows the stable order of `RULES`.
 """
 from __future__ import annotations
 
@@ -29,14 +30,14 @@ def _hit_for(rule: RedFlagRule) -> RedFlagHit:
 
 
 def evaluate(features: CaseFeatures) -> RedFlagResult:
-    """Evalúa las red flags sobre `features`. Función pura.
+    """Evaluate the red flags over `features`. Pure function.
 
-    Recorre `RULES` en orden estable; para cada regla cuyo predicado sea
-    verdadero, agrega un `RedFlagHit`. Devuelve:
+    Walks `RULES` in stable order; for each rule whose predicate is
+    true, appends a `RedFlagHit`. Returns:
 
-      - `red_flag_activa` True si algún hit trae `DERIVAR_URGENTE`.
-      - `forced_actions` = unión (set) de las acciones forzadas de todos los hits.
-      - `hits` en el mismo orden de `RULES`.
+      - `red_flag_activa` True if some hit carries `DERIVAR_URGENTE`.
+      - `forced_actions` = union (set) of the forced actions of all hits.
+      - `hits` in the same order as `RULES`.
     """
     hits: list[RedFlagHit] = []
     forced: set[ForcedAction] = set()

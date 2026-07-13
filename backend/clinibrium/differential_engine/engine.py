@@ -1,14 +1,15 @@
-"""DifferentialEngine — scoring determinista y puro.
+"""DifferentialEngine — deterministic, pure scoring.
 
-Toma `CaseFeatures` y devuelve un `DifferentialResult` con candidatos
-ordenados desc por score (0..1). Es una función PURA:
+Takes `CaseFeatures` and returns a `DifferentialResult` with candidates
+sorted desc by score (0..1). It is a PURE function:
 
-  - mismas features ⇒ mismo resultado (mismas listas, mismo orden),
-  - sin I/O, sin reloj, sin LLM, sin random,
-  - sin acoplamiento a `redflag_engine` / `reasoner` / `ml_client` /
-    `orchestrator` (INV-5: separación regulatoria),
-  - no detecta red flags, no fija urgencia y no recomienda tratamiento
-    (eso es RedFlagEngine + rails + reasoner; INV-1, INV-3).
+  - same features ⇒ same result (same lists, same order),
+  - no I/O, no clock, no LLM, no randomness,
+  - no coupling to `redflag_engine` / `reasoner` / `ml_client` /
+    `orchestrator` (INV-5: regulatory separation),
+  - it does not detect red flags, does not set urgency and does not
+    recommend treatment (that is RedFlagEngine + rails + reasoner;
+    INV-1, INV-3).
 """
 from __future__ import annotations
 
@@ -17,9 +18,9 @@ from clinibrium.contracts.features import CaseFeatures
 from clinibrium.contracts.results import DifferentialCandidate, DifferentialResult
 from clinibrium.differential_engine.criteria import CRITERIA, DiagnosisCriterion
 
-# Precomputado en import-time: `Diagnosis → peso total posible`. Es
-# determinista (deriva 1:1 de CRITERIA) y deja la evaluación como un
-# solo pass lineal por diagnóstico.
+# Precomputed at import time: `Diagnosis → total possible weight`. It is
+# deterministic (derives 1:1 from CRITERIA) and leaves evaluation as a
+# single linear pass per diagnosis.
 _MAX_POSSIBLE_BY_DIAGNOSIS: dict[Diagnosis, float] = {}
 
 
@@ -38,9 +39,9 @@ def _score_one(
     features: CaseFeatures,
     criteria: list[DiagnosisCriterion],
 ) -> DifferentialCandidate | None:
-    """Suma los pesos de los criterios matcheados y normaliza por el
-    total posible para ese diagnóstico. Devuelve `None` si nada matchea
-    o si el diagnóstico no tiene criterios definidos.
+    """Sums the weights of matched criteria and normalizes by the total
+    possible for that diagnosis. Returns `None` if nothing matches or
+    if the diagnosis has no defined criteria.
     """
     max_possible = _MAX_POSSIBLE_BY_DIAGNOSIS.get(diagnosis, 0.0)
     if max_possible <= 0.0:
@@ -66,15 +67,15 @@ def _score_one(
 
 
 def evaluate(features: CaseFeatures) -> DifferentialResult:
-    """Evalúa `features` y devuelve el pool priorizado de diagnósticos
-    diferenciales. Mismas features ⇒ mismo resultado, siempre.
+    """Evaluates `features` and returns the prioritized pool of
+    differential diagnoses. Same features ⇒ same result, always.
 
-    Convenciones:
-      - Itera `Diagnosis` en su orden de definición (estable) y aplica
-        `sorted(..., key=-score)` para el orden descendente por score.
-        Python `sorted` es estable ⇒ empate de score se desempata por
-        el orden de inserción, que es el orden de enum.
-      - Excluye candidatos con `score == 0` (ningún criterio matcheó).
+    Conventions:
+      - Iterates `Diagnosis` in its definition order (stable) and applies
+        `sorted(..., key=-score)` for descending order by score.
+        Python `sorted` is stable ⇒ score ties are broken by insertion
+        order, which is the enum order.
+      - Excludes candidates with `score == 0` (no criterion matched).
     """
     candidates: list[DifferentialCandidate] = []
     for dx in Diagnosis:

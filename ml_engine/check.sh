@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Gate de Track B (ml_engine) — AISLADO del gate de A.
-# El gate raíz (check.sh de A) NO corre esto salvo que exista ml_engine/.venv
-# (Codex/Gemini: una dep ML rota NUNCA debe tumbar el gate de A · INV-6).
+# Track B gate (ml_engine) — ISOLATED from A's gate.
+# The root gate (A's check.sh) does NOT run this unless ml_engine/.venv exists
+# (Codex/Gemini: a broken ML dep must NEVER take down A's gate · INV-6).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +21,7 @@ fi
 source .venv/bin/activate
 python -m pip install --upgrade pip >/dev/null
 pip install -e ".[dev]" >/dev/null
-ok "venv ml_engine listo, deps ML instaladas"
+ok "ml_engine venv ready, ML deps installed"
 
 step "ruff"
 ruff check ml_engine

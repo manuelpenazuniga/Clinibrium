@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -96,13 +96,13 @@
   <div class="container">
     <h1>MediaPipe Nystagmus Detection Spike</h1>
     
-    <div id="status" class="status info">Cargando MediaPipe...</div>
-    
+    <div id="status" class="status info">Loading MediaPipe...</div>
+
     <div class="controls">
-      <button id="btnWebcam">Iniciar Webcam</button>
-      <label for="fileInput">Cargar Video</label>
+      <button id="btnWebcam">Start Webcam</button>
+      <label for="fileInput">Load Video</label>
       <input type="file" id="fileInput" accept="video/*">
-      <button id="btnStop" disabled>Detener</button>
+      <button id="btnStop" disabled>Stop</button>
     </div>
 
     <div class="video-container">
@@ -114,35 +114,35 @@
 
     <div class="metrics">
       <div class="metric">
-        <div class="metric-label">FPS Efectivo</div>
+        <div class="metric-label">Effective FPS</div>
         <div class="metric-value" id="fps">0</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Vel. Horizontal (°/s)</div>
+        <div class="metric-label">Horizontal Vel. (°/s)</div>
         <div class="metric-value" id="velH">0.0</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Vel. Vertical (°/s)</div>
+        <div class="metric-label">Vertical Vel. (°/s)</div>
         <div class="metric-value" id="velV">0.0</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Frecuencia Nistagmo (Hz)</div>
+        <div class="metric-label">Nystagmus Frequency (Hz)</div>
         <div class="metric-value" id="freq">0.0</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Dirección Predominante</div>
+        <div class="metric-label">Predominant Direction</div>
         <div class="metric-value" id="direction">-</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Latencia (s)</div>
+        <div class="metric-label">Latency (s)</div>
         <div class="metric-value" id="latency">-</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Batidas Detectadas</div>
+        <div class="metric-label">Detected Beats</div>
         <div class="metric-value" id="beats">0</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Fatigabilidad</div>
+        <div class="metric-label">Fatigability</div>
         <div class="metric-value" id="fatigue">-</div>
       </div>
     </div>
@@ -195,10 +195,10 @@
           outputFacialTransformationMatrixes: false
         });
         
-        status.textContent = 'MediaPipe cargado. Listo para iniciar.';
+        status.textContent = 'MediaPipe loaded. Ready to start.';
         status.className = 'status success';
       } catch (err) {
-        status.textContent = `Error cargando MediaPipe: ${err.message}`;
+        status.textContent = `Error loading MediaPipe: ${err.message}`;
         status.className = 'status error';
         console.error(err);
       }
@@ -378,9 +378,9 @@
         
         let direction = '-';
         if (Math.abs(avgVx) > Math.abs(avgVy)) {
-          direction = avgVx > 0 ? 'Derecha' : 'Izquierda';
+          direction = avgVx > 0 ? 'Right' : 'Left';
         } else if (Math.abs(avgVy) > 5) {
-          direction = avgVy > 0 ? 'Abajo' : 'Arriba';
+          direction = avgVy > 0 ? 'Down' : 'Up';
         }
         document.getElementById('direction').textContent = direction;
       }
@@ -401,7 +401,7 @@
         const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
         
         const decay = avgSecond / avgFirst;
-        document.getElementById('fatigue').textContent = decay < 0.7 ? 'Sí' : 'No';
+        document.getElementById('fatigue').textContent = decay < 0.7 ? 'Yes' : 'No';
       }
     }
 
@@ -411,7 +411,7 @@
       const currentTime = (performance.now() - startTime) / 1000;
       
       if (video.readyState >= 2) {
-        // TODO(audit): verificar API detectForVideo - timestamp debe ser presentation time en ms
+        // TODO(audit): verify detectForVideo API - timestamp must be presentation time in ms
         const timestampMs = video.currentTime > 0 ? video.currentTime * 1000 : performance.now();
         const landmarks = faceLandmarker.detectForVideo(video, timestampMs);
         
@@ -476,12 +476,12 @@
         frameCount = 0;
         
         document.getElementById('btnStop').disabled = false;
-        status.textContent = 'Webcam activa. Trackeando...';
+        status.textContent = 'Webcam active. Tracking...';
         status.className = 'status success';
         
         processFrame();
       } catch (err) {
-        status.textContent = `Error webcam: ${err.message}`;
+        status.textContent = `Webcam error: ${err.message}`;
         status.className = 'status error';
       }
     }
@@ -499,7 +499,7 @@
       frameCount = 0;
       
       document.getElementById('btnStop').disabled = false;
-      status.textContent = `Procesando video: ${file.name}`;
+      status.textContent = `Processing video: ${file.name}`;
       status.className = 'status success';
       
       processFrame();
@@ -521,7 +521,7 @@
       ctx.clearRect(0, 0, overlay.width, overlay.height);
       
       document.getElementById('btnStop').disabled = true;
-      status.textContent = 'Detenido.';
+      status.textContent = 'Stopped.';
       status.className = 'status info';
     }
 

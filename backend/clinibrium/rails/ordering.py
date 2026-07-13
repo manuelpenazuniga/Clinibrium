@@ -1,7 +1,7 @@
-"""Escala ordenada de urgencia (pura, sin I/O).
+"""Ordered urgency scale (pure, no I/O).
 
-`inmediata > prioritaria > ambulatoria`. Usado por `rails/engine.py` para
-componer contribuciones de urgencia con monotonía garantizada.
+`inmediata > prioritaria > ambulatoria`. Used by `rails/engine.py` to
+compose urgency contributions with guaranteed monotonicity.
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ _URGENCY_RANK: dict[Urgency, int] = {
 
 
 def urgency_max(a: Urgency, b: Urgency) -> Urgency:
-    """Devuelve la urgencia MÁS ALTA (menor rank numérico) entre `a` y `b`.
+    """Returns the HIGHEST urgency (lowest numeric rank) between `a` and `b`.
 
-    La escala es `inmediata (0) > prioritaria (1) > ambulatoria (2)`.
+    The scale is `inmediata (0) > prioritaria (1) > ambulatoria (2)`.
     """
     return a if _URGENCY_RANK[a] <= _URGENCY_RANK[b] else b

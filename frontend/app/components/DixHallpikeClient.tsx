@@ -112,7 +112,7 @@ export default function DixHallpikeClient() {
       try {
         const mp = await loadMediaPipe();
         if (cancelled) return;
-        // El wasm del CDN debe calzar con la versión instalada del paquete JS.
+        // The CDN wasm must match the installed version of the JS package.
         const filesetResolver = await mp.FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
         );
@@ -194,7 +194,7 @@ export default function DixHallpikeClient() {
     ctx.lineTo(canvas.width, midY);
     ctx.stroke();
 
-    // H = teal (patrón periférico típico) · V = rojo (vertical puro = signo central)
+    // H = teal (typical peripheral pattern) · V = red (pure vertical = central sign)
     ctx.strokeStyle = "#4FC1BC";
     ctx.lineWidth = 2;
     ctx.beginPath();

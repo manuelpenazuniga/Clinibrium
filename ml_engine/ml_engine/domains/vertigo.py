@@ -1,13 +1,13 @@
-"""Dominio VÉRTIGO (instancia #1) — config, no código.
+"""VERTIGO domain (instance #1) — config, not code.
 
-Define el ``Domain`` de vértigo: features (subconjunto del allowlist de
-``CaseFeatures``), transformadores derivados PUROS (definidos AQUÍ, no en el
-core — así el core es agnóstico), la jerarquía con gate binario de peligro, y
-los priors sintéticos (provisionales — el especialista los refina, T-CLIN).
+Defines the vertigo ``Domain``: features (subset of the ``CaseFeatures``
+allowlist), PURE derived transformers (defined HERE, not in the core — so the
+core stays agnostic), the hierarchy with its binary danger gate, and the
+synthetic priors (provisional — the specialist refines them, T-CLIN).
 
-NO importa ``clinibrium``: el vocabulario (strings de enums) es config de este
-dominio. Las categorías coinciden con los ``.value`` de los enums de A para
-que el modelo entrenado sobre sintético consuma los mismos strings al servir.
+It does NOT import ``clinibrium``: the vocabulary (enum strings) is config of
+this domain. The categories match the exact ``.value`` of A's enums so that
+the model trained on synthetic data consumes the same strings at serving time.
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from ml_engine.core.spec import (
 SEED = 20260711
 
 # --------------------------------------------------------------------------
-# Transformadores derivados PUROS (NaN-safe). Leen la fila cruda de input.
-# Robustos a la forma "serving" (focal_signs = lista) y "synth" (= conteo num).
+# PURE derived transformers (NaN-safe). They read the raw input row.
+# Robust to the "serving" form (focal_signs = list) and "synth" form (= numeric count).
 # --------------------------------------------------------------------------
 
 
@@ -39,7 +39,7 @@ def _is_nan(v: object) -> bool:
 
 
 def _b(v: object) -> float:
-    # NaN-safe: en Python bool(nan) es True → hay que guardarlo explícito.
+    # NaN-safe: in Python bool(nan) is True → must be guarded explicitly.
     if v is None or _is_nan(v):
         return 0.0
     return 1.0 if v else 0.0
@@ -58,7 +58,7 @@ def _count(v: object) -> float:
 
 
 def danger_sign_count(row: Row) -> float:
-    """Signos neurológicos de alarma (focal + ataxia troncal + cefalea súbita)."""
+    """Neurological alarm signs (focal + severe truncal ataxia + sudden headache)."""
     return (
         _count(row.get("focal_signs"))
         + _b(row.get("truncal_ataxia_severe"))
@@ -67,7 +67,7 @@ def danger_sign_count(row: Row) -> float:
 
 
 def hints_central_pattern(row: Row) -> float:
-    """Patrón HINTS 'central': head-impulse NORMAL en AVS (acute_continuous)."""
+    """'Central' HINTS pattern: NORMAL head-impulse in AVS (acute_continuous)."""
     return (
         1.0
         if row.get("head_impulse") == "normal"
@@ -77,14 +77,14 @@ def hints_central_pattern(row: Row) -> float:
 
 
 def vascular_risk_count(row: Row) -> float:
-    """Carga de riesgo vascular: |factores| + (edad ≥ 60)."""
+    """Vascular risk burden: |factors| + (age ≥ 60)."""
     age = row.get("age_years")
     age_pt = 1.0 if isinstance(age, (int, float)) and not isinstance(age, bool) and age >= 60 else 0.0
     return _count(row.get("vascular_risk_factors")) + age_pt
 
 
 def cardiogenic_cluster(row: Row) -> float:
-    """Cluster cardiogénico: presíncope + palpitaciones + dolor torácico + ortostático."""
+    """Cardiogenic cluster: presyncope + palpitations + chest pain + orthostatic."""
     return (
         _b(row.get("presyncope_syncope"))
         + _b(row.get("palpitations"))
@@ -94,12 +94,12 @@ def cardiogenic_cluster(row: Row) -> float:
 
 
 def central_nystagmus_pattern(row: Row) -> float:
-    """Patrón de nistagmo CENTRAL: puro torsional/vertical o cambiante (A2/A3).
+    """CENTRAL nystagmus pattern: pure torsional/vertical or direction-changing (A2/A3).
 
-    Reconcilia A↔B: el motor A trata estas direcciones como red flag central;
-    esta derivada las lleva al gate de peligro (feature de riesgo monótona) para
-    que B coincida. (El torsional POSICIONAL del VPPB va por dix_hallpike +
-    nystagmus_fatigable, no por nystagmus_direction.)
+    Reconciles A↔B: engine A treats these directions as a central red flag;
+    this derived feature feeds them into the danger gate (monotone risk
+    feature) so B agrees. (The POSITIONAL torsional of BPPV goes through
+    dix_hallpike + nystagmus_fatigable, not nystagmus_direction.)
     """
     return (
         1.0
@@ -109,11 +109,11 @@ def central_nystagmus_pattern(row: Row) -> float:
 
 
 # --------------------------------------------------------------------------
-# FeatureSpec — features que ve el modelo + derivadas + risk features
+# FeatureSpec — features the model sees + derived + risk features
 # --------------------------------------------------------------------------
 
 _RAW: tuple[RawFeature, ...] = (
-    # Categóricas (categorías = .value exactos de los enums de A)
+    # Categoricals (categories = exact .value of A's enums)
     RawFeature("duration", "categorical",
                ("seconds", "under_1min", "minutes", "hours", "over_24h_continuous", "days", "recurrent_episodic")),
     RawFeature("onset", "categorical", ("sudden", "gradual", "unknown")),
@@ -127,7 +127,7 @@ _RAW: tuple[RawFeature, ...] = (
     RawFeature("hearing_loss", "categorical", ("none", "sudden_unilateral", "fluctuating", "chronic")),
     RawFeature("dix_hallpike", "categorical",
                ("right_positive", "left_positive", "bilateral_positive", "negative", "not_done")),
-    # Booleanas (encode → 0/1)
+    # Booleans (encoded → 0/1)
     RawFeature("skew_deviation", "boolean"),
     RawFeature("nystagmus_direction_changing_gaze", "boolean"),
     RawFeature("tinnitus", "boolean"),
@@ -138,11 +138,11 @@ _RAW: tuple[RawFeature, ...] = (
     RawFeature("presyncope_syncope", "boolean"),
     RawFeature("palpitations", "boolean"),
     RawFeature("chest_pain", "boolean"),
-    # Fatigabilidad del nistagmo: signo BENIGNO (posicional/VPPB). Reconcilia
-    # A↔B: el torsional/vertical ESPONTÁNEO es central (A2); el de VPPB es
-    # posicional + fatigable (dix_hallpike + este flag), NO nystagmus_direction.
+    # Nystagmus fatigability: BENIGN sign (positional/BPPV). Reconciles A↔B:
+    # SPONTANEOUS torsional/vertical is central (A2); the BPPV one is
+    # positional + fatigable (dix_hallpike + this flag), NOT nystagmus_direction.
     RawFeature("nystagmus_fatigable", "boolean"),
-    # Numéricas
+    # Numerics
     RawFeature("nystagmus_latency_s", "numeric"),
     RawFeature("nystagmus_duration_s", "numeric"),
     RawFeature("age_years", "numeric"),
@@ -157,7 +157,7 @@ _DERIVED: tuple[DerivedFeature, ...] = (
     DerivedFeature("central_nystagmus_pattern", central_nystagmus_pattern),
 )
 
-# Features de riesgo (monótonas +1 hacia peligro en el gate N0a). Todas numéricas.
+# Risk features (monotone +1 toward danger in gate N0a). All numeric.
 _RISK: tuple[str, ...] = (
     "danger_sign_count",
     "hints_central_pattern",
@@ -168,9 +168,9 @@ _RISK: tuple[str, ...] = (
     "nystagmus_direction_changing_gaze",
 )
 
-# Allowlist de input del servicio (extra="forbid"): el shape completo de
-# CaseFeatures (frontera de privacidad). Duplicado a propósito como config del
-# dominio; el servicio rechaza cualquier clave fuera de acá.
+# Service input allowlist (extra="forbid"): the full CaseFeatures shape
+# (privacy boundary). Deliberately duplicated as domain config; the service
+# rejects any key outside this set.
 _ALLOWLIST: frozenset[str] = frozenset({
     "duration", "onset", "trigger", "timing_pattern",
     "nystagmus_direction", "nystagmus_direction_changing_gaze", "nystagmus_latency_s",
@@ -188,7 +188,7 @@ _ALLOWLIST: frozenset[str] = frozenset({
 FEATURES = FeatureSpec(raw=_RAW, derived=_DERIVED, risk_features=_RISK, input_allowlist=_ALLOWLIST)
 
 # --------------------------------------------------------------------------
-# LabelHierarchy — gate binario de peligro (INV-9)
+# LabelHierarchy — binary danger gate (INV-9)
 # --------------------------------------------------------------------------
 
 HIERARCHY = LabelHierarchy(
@@ -209,9 +209,9 @@ HIERARCHY = LabelHierarchy(
 )
 
 # --------------------------------------------------------------------------
-# SyntheticSpec — priors PROVISIONALES (T-CLIN los firma). Documentado en cards.
-# Solo se listan las distribuciones DISCRIMINANTES por label; las no listadas
-# usan defaults neutrales del generador (TB1.2).
+# SyntheticSpec — PROVISIONAL priors (T-CLIN signs them). Documented in cards.
+# Only the DISCRIMINANT distributions per label are listed; unlisted ones use
+# the generator's neutral defaults (TB1.2).
 # --------------------------------------------------------------------------
 
 
@@ -228,11 +228,11 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "timing_pattern": _p(episodic_triggered=0.85, episodic_spontaneous=0.15),
             "onset": _p(sudden=0.70, gradual=0.30),
             "dix_hallpike": _p(right_positive=0.42, left_positive=0.42, negative=0.08, not_done=0.08),
-            # VPPB NO tiene nistagmo espontáneo puro torsional/vertical (eso es
-            # CENTRAL, A2). Su nistagmo es posicional (dix_hallpike) + fatigable.
+            # BPPV has NO pure torsional/vertical spontaneous nystagmus (that is
+            # CENTRAL, A2). Its nystagmus is positional (dix_hallpike) + fatigable.
             "nystagmus_direction": _p(none=0.60, mixed=0.25, horizontal=0.15),
         },
-        boolean={"nystagmus_fatigable": 0.85},  # signo benigno clave de VPPB
+        boolean={"nystagmus_fatigable": 0.85},  # key benign sign of BPPV
         numeric={"nystagmus_latency_s": NumericDist(5, 3, 1, 20)},
     ),
     LabelProfile(
@@ -244,7 +244,7 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "nystagmus_direction": _p(horizontal=0.7, mixed=0.2, none=0.1),
             "dix_hallpike": _p(negative=0.4, right_positive=0.25, left_positive=0.25, not_done=0.1),
         },
-        boolean={"nystagmus_fatigable": 0.7},  # posicional/benigno
+        boolean={"nystagmus_fatigable": 0.7},  # positional/benign
         numeric={"nystagmus_latency_s": NumericDist(3, 2, 0, 12)},
     ),
     LabelProfile(
@@ -294,19 +294,19 @@ _PROFILES: tuple[LabelProfile, ...] = (
             "duration": _p(over_24h_continuous=0.55, hours=0.30, days=0.15),
             "timing_pattern": _p(acute_continuous=0.72, episodic_spontaneous=0.28),
             "head_impulse": _p(normal=0.70, abnormal_corrective_saccade=0.15, not_done=0.15),
-            # Nistagmo espontáneo puro torsional/vertical o cambiante = CENTRAL (A2/A3).
+            # Pure torsional/vertical or direction-changing spontaneous nystagmus = CENTRAL (A2/A3).
             "nystagmus_direction": _p(direction_changing=0.40, vertical_pure=0.20,
                                       torsional_pure=0.20, horizontal=0.10, mixed=0.10),
         },
         boolean={
             "skew_deviation": 0.50, "nystagmus_direction_changing_gaze": 0.50,
             "truncal_ataxia_severe": 0.45, "headache_neck_pain_sudden_severe": 0.35,
-            "nystagmus_fatigable": 0.02,  # central NO es fatigable (persistente)
+            "nystagmus_fatigable": 0.02,  # central is NOT fatigable (persistent)
         },
         numeric={
             "age_years": NumericDist(66, 10, 30, 90),
-            "focal_signs": NumericDist(1.2, 1.0, 0, 4),          # conteo (transform-input)
-            "vascular_risk_factors": NumericDist(1.6, 1.1, 0, 5),  # conteo (transform-input)
+            "focal_signs": NumericDist(1.2, 1.0, 0, 4),          # count (transform-input)
+            "vascular_risk_factors": NumericDist(1.6, 1.1, 0, 5),  # count (transform-input)
         },
     ),
     LabelProfile(
@@ -327,7 +327,7 @@ _PROFILES: tuple[LabelProfile, ...] = (
 SYNTHETIC = SyntheticSpec(profiles=_PROFILES, n_samples=8000, seed=SEED, missing_rate=0.15)
 
 # --------------------------------------------------------------------------
-# El Domain (bundle que instancia la plataforma)
+# The Domain (bundle that instantiates the platform)
 # --------------------------------------------------------------------------
 
 VERTIGO = Domain(name="vertigo", features=FEATURES, hierarchy=HIERARCHY, synthetic=SYNTHETIC)

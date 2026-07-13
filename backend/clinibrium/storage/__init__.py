@@ -1,4 +1,4 @@
-"""Persistencia del AuditEvent: Postgres si está, JSONL si no (best-effort)."""
+"""AuditEvent persistence: Postgres if available, JSONL otherwise (best-effort)."""
 from __future__ import annotations
 
 from clinibrium.storage.persist import persist_audit

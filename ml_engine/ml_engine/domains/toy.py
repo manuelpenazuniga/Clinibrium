@@ -1,13 +1,13 @@
-"""Dominio TOY (instancia #2) — prueba de agnosticismo de plataforma (INV-12).
+"""TOY domain (instance #2) — platform agnosticism proof (INV-12).
 
-NO es vértigo ni clínico: es un dominio deliberadamente distinto y **NO
-isomorfo** al de vértigo (otra jerarquía, otros nombres/tipos de features, otro
-número de clases y de niveles) que entrena y sirve por la MISMA factory del
-core, cambiando SOLO este archivo de config. Su existencia demuestra que el
-core (`ml_engine.core.*`) no tiene nada hardcodeado de vértigo.
+It is NOT vertigo nor clinical: a deliberately different, **NON-isomorphic**
+domain (different hierarchy, different feature names/types, different number
+of classes and levels) that trains and serves through the SAME core factory,
+changing ONLY this config file. Its existence proves that the core
+(`ml_engine.core.*`) has nothing vertigo-specific hardcoded.
 
-Jerarquía (no isomorfa a vértigo: 3 hojas, profundidad mixta):
-    g0 (gate binario) → {branch_high, leaf_z}
+Hierarchy (non-isomorphic to vertigo: 3 leaves, mixed depth):
+    g0 (binary gate) → {branch_high, leaf_z}
                           └ branch_high → {leaf_x, leaf_y}
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ SEED = 7
 
 
 def _score(row: Row) -> float:
-    """Derivada del dominio toy (pura): combina dos señales crudas."""
+    """Derived feature of the toy domain (pure): combines two raw signals."""
     a = row.get("signal_a")
     b = row.get("flag_b")
     val = (float(a) if isinstance(a, (int, float)) and not isinstance(a, bool) else 0.0)
@@ -42,7 +42,7 @@ _RAW = (
     RawFeature("signal_a", "numeric"),
 )
 _DERIVED = (DerivedFeature("score", _score),)
-# feature de riesgo (monótona hacia la rama "high"): la derivada score
+# risk feature (monotone toward the "high" branch): the derived score
 _RISK = ("score",)
 
 FEATURES = FeatureSpec(raw=_RAW, derived=_DERIVED, risk_features=_RISK)

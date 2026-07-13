@@ -1,19 +1,19 @@
-"""Tests del módulo `grounding` (T6) — RAG por paráfrasis propia.
+"""Tests for the `grounding` module (T6) — RAG via own paraphrase.
 
-Cubre los criterios de aceptación de la tarea:
-  (1) `InlineGrounding.retrieve` con candidatos de BPPV posterior +
-      Ménière devuelve los chunks de esos diagnósticos, ordenados por
-      score del pool, ≤k, determinista.
-  (2) El `CORPUS` cubre los 8 diagnósticos documentados con al menos
-      1 chunk cada uno.
-  (3) `get_grounding()` con `DATABASE_URL=None` devuelve
-      `InlineGrounding` (no rompe el gate).
-  (4) El embedder es determinista (mismo texto → mismo vector).
-  (5) Tests de pgvector que requieren DB se SKIPPEAN si no hay DB
-      (gate NO depende de una DB corriendo).
-  (6) INV: el módulo `grounding` SOLO importa de `contracts` (+
-      `config` + su propia conexión DB). NO importa `reasoner`,
-      motores, `orchestrator`, `rails` ni `api`.
+Covers the task's acceptance criteria:
+  (1) `InlineGrounding.retrieve` with posterior BPPV + Ménière candidates
+      returns the chunks for those diagnoses, ordered by pool score,
+      ≤k, deterministic.
+  (2) The `CORPUS` covers the 8 documented diagnoses with at least
+      1 chunk each.
+  (3) `get_grounding()` with `DATABASE_URL=None` returns
+      `InlineGrounding` (does not break the gate).
+  (4) The embedder is deterministic (same text → same vector).
+  (5) pgvector tests that require a DB are SKIPPED when no DB is
+      available (the gate does NOT depend on a running DB).
+  (6) INV: the `grounding` module ONLY imports from `contracts` (+
+      `config` + its own DB connection). It does NOT import `reasoner`,
+      engines, `orchestrator`, `rails` or `api`.
 """
 from __future__ import annotations
 
@@ -59,10 +59,10 @@ def _diff(
 
 
 def _has_db() -> bool:
-    """Devuelve True solo si Postgres responde al TCP probe del DSN.
+    """Returns True only if Postgres answers the DSN's TCP probe.
 
-    Usado por la fixture `_require_db` para skippear tests de pgvector
-    cuando la DB no está corriendo (el gate NO debe depender de ella).
+    Used by the `_require_db` fixture to skip pgvector tests when the
+    DB is not running (the gate must NOT depend on it).
     """
     from urllib.parse import urlparse
 
@@ -94,17 +94,17 @@ def db_available() -> bool:
 @pytest.fixture()
 def require_db(db_available: bool) -> None:
     if not db_available:
-        pytest.skip("Postgres no disponible — test de pgvector skippeado")
+        pytest.skip("Postgres not available — pgvector test skipped")
 
 
 # =========================================================================
-# (1) InlineGrounding.retrieve — orden, k, determinismo
+# (1) InlineGrounding.retrieve — order, k, determinism
 # =========================================================================
 
 
 def test_inline_retrieve_returns_chunks_for_top_candidates() -> None:
-    """BPPV posterior + Ménière en el pool ⇒ retrieve devuelve chunks de
-    ESOS diagnósticos, en el orden del pool, hasta k.
+    """Posterior BPPV + Ménière in the pool ⇒ retrieve returns chunks for
+    THOSE diagnoses, in pool order, up to k.
     """
     g = InlineGrounding()
     result = g.retrieve(
@@ -117,21 +117,21 @@ def test_inline_retrieve_returns_chunks_for_top_candidates() -> None:
     )
     assert len(result) <= 5
     assert len(result) > 0
-    # Todos los chunks devueltos son de BPPV posterior o Ménière
+    # All returned chunks belong to posterior BPPV or Ménière
     assert all(
         c.diagnosis in {Diagnosis.bppv_posterior, Diagnosis.meniere} for c in result
     )
-    # Los de BPPV van antes que los de Ménière (orden del pool)
+    # BPPV chunks come before Ménière chunks (pool order)
     seen_meniere = False
     for c in result:
         if c.diagnosis == Diagnosis.meniere:
             seen_meniere = True
         else:
-            assert not seen_meniere, "Ménière apareció antes que BPPV posterior"
+            assert not seen_meniere, "Ménière appeared before posterior BPPV"
 
 
 def test_inline_retrieve_respects_k_limit() -> None:
-    """Con k=2 sobre el pool de BPPV (3 chunks) ⇒ exactamente 2 chunks."""
+    """With k=2 over the BPPV pool (3 chunks) ⇒ exactly 2 chunks."""
     g = InlineGrounding()
     result = g.retrieve(
         _diff((Diagnosis.bppv_posterior, 0.99)),
@@ -143,7 +143,7 @@ def test_inline_retrieve_respects_k_limit() -> None:
 
 
 def test_inline_retrieve_deterministic_two_calls_equal() -> None:
-    """Determinismo: dos `retrieve()` con los mismos args ⇒ mismo resultado."""
+    """Determinism: two `retrieve()` calls with the same args ⇒ same result."""
     g = InlineGrounding()
     args = (
         _diff(
@@ -160,7 +160,7 @@ def test_inline_retrieve_deterministic_two_calls_equal() -> None:
 
 
 def test_inline_retrieve_deterministic_independent_instances() -> None:
-    """Determinismo: dos instancias nuevas del grounding ⇒ mismo resultado."""
+    """Determinism: two fresh grounding instances ⇒ same result."""
     g1 = InlineGrounding()
     g2 = InlineGrounding()
     args = (
@@ -175,19 +175,19 @@ def test_inline_retrieve_deterministic_independent_instances() -> None:
 
 
 def test_inline_retrieve_empty_pool_returns_empty() -> None:
-    """Sin candidatos, retrieve devuelve lista vacía (no rompe)."""
+    """With no candidates, retrieve returns an empty list (does not break)."""
     g = InlineGrounding()
     result = g.retrieve(DifferentialResult(), CaseFeatures(), k=4)
     assert result == []
 
 
 def test_inline_retrieve_with_unknown_dx_skips_silently() -> None:
-    """Un candidato cuyo diagnóstico no está en el CORPUS no rompe
-    retrieve — simplemente no aporta chunks. (No debería pasar: el
-    DifferentialEngine solo emite `Diagnosis` válidos, pero la
-    interfaz es defensiva.)"""
+    """A candidate whose diagnosis is not in the CORPUS does not break
+    retrieve — it simply contributes no chunks. (Should not happen: the
+    DifferentialEngine only emits valid `Diagnosis` values, but the
+    interface is defensive.)"""
     g = InlineGrounding()
-    # Forzamos un Diagnosis que NO está en CORPUS (`undetermined`).
+    # Force a Diagnosis that is NOT in the CORPUS (`undetermined`).
     result = g.retrieve(
         _diff(
             (Diagnosis.undetermined, 0.5),
@@ -196,24 +196,24 @@ def test_inline_retrieve_with_unknown_dx_skips_silently() -> None:
         CaseFeatures(),
         k=3,
     )
-    # Solo BPPV aporta; `undetermined` no figura en el CORPUS.
+    # Only BPPV contributes; `undetermined` is not in the CORPUS.
     assert all(c.diagnosis == Diagnosis.bppv_posterior for c in result)
 
 
 def test_inline_satisfies_protocol() -> None:
-    """`InlineGrounding` satisface el `Protocol Grounding` (duck typing)."""
+    """`InlineGrounding` satisfies the `Grounding` Protocol (duck typing)."""
     g: Grounding = InlineGrounding()
     assert hasattr(g, "retrieve")
     assert callable(g.retrieve)
 
 
 # =========================================================================
-# (2) Cobertura del CORPUS — los 8 diagnósticos
+# (2) CORPUS coverage — all 8 diagnoses
 # =========================================================================
 
 
 def test_corpus_covers_eight_diagnoses() -> None:
-    """El CORPUS cubre los 8 diagnósticos documentados en el spec de T6."""
+    """The CORPUS covers the 8 diagnoses documented in the T6 spec."""
     assert SUPPORTED_DIAGNOSES == frozenset(
         {
             Diagnosis.bppv_posterior,
@@ -229,49 +229,49 @@ def test_corpus_covers_eight_diagnoses() -> None:
 
 
 def test_corpus_has_at_least_one_chunk_per_diagnosis() -> None:
-    """Cada diagnóstico cubierto tiene ≥1 chunk."""
+    """Every covered diagnosis has ≥1 chunk."""
     for dx in SUPPORTED_DIAGNOSES:
-        assert CORPUS.get(dx), f"sin chunks para {dx.value}"
+        assert CORPUS.get(dx), f"no chunks for {dx.value}"
 
 
 def test_corpus_chunks_have_well_formed_source_ids() -> None:
-    """`source_id` sigue la convención `clinibrium-paraphrase:<dx>-<n>`."""
+    """`source_id` follows the `clinibrium-paraphrase:<dx>-<n>` convention."""
     pattern_ok = True
     for dx, chunks in CORPUS.items():
         for i, chunk in enumerate(chunks, start=1):
             assert chunk.source_id == f"clinibrium-paraphrase:{dx.value}-{i}", (
-                f"source_id inesperado: {chunk.source_id}"
+                f"unexpected source_id: {chunk.source_id}"
             )
             assert chunk.diagnosis == dx
             assert pattern_ok
-            assert chunk.text  # no vacío
+            assert chunk.text  # not empty
 
 
-def test_corpus_chunks_are_paramfrasis_propia_marker() -> None:
-    """Cada chunk debe tener un texto no trivial (>50 chars) — esto es un
-    test de humo de la cantidad de paráfrasis. La auditoría de calidad
-    clínica de las paráfrasis es tarea `T-CLIN`; acá solo garantizamos
-    que hay contenido原创 (no son placeholders vacíos)."""
+def test_corpus_chunks_are_own_paraphrase_marker() -> None:
+    """Every chunk must have non-trivial text (>50 chars) — this is a
+    smoke test of the amount of paraphrase. The clinical quality audit
+    of the paraphrases is task `T-CLIN`; here we only guarantee there
+    is original content (no empty placeholders)."""
     for dx, chunks in CORPUS.items():
         for chunk in chunks:
-            assert len(chunk.text) > 50, f"chunk de {dx.value} parece vacío"
-            # Heurística suave: ningún chunk repite la marca ICVD literal
-            # (no debería — son paráfrasis propias).
+            assert len(chunk.text) > 50, f"chunk for {dx.value} looks empty"
+            # Soft heuristic: no chunk repeats the literal ICVD marker
+            # (it shouldn't — they are our own paraphrases).
             assert "ICVD" not in chunk.text.upper(), (
-                f"chunk de {dx.value} contiene literal 'ICVD' — debería ser "
-                f"paráfrasis"
+                f"chunk for {dx.value} contains literal 'ICVD' — it should be "
+                f"a paraphrase"
             )
 
 
 # =========================================================================
-# (3) Factory — get_grounding() con DATABASE_URL=None ⇒ InlineGrounding
+# (3) Factory — get_grounding() with DATABASE_URL=None ⇒ InlineGrounding
 # =========================================================================
 
 
 def test_get_grounding_with_no_database_url_returns_inline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sin DATABASE_URL: la factory degrada a `InlineGrounding` (no rompe)."""
+    """Without DATABASE_URL: the factory degrades to `InlineGrounding` (does not break)."""
     from clinibrium.config import get_settings
 
     monkeypatch.setattr(get_settings(), "DATABASE_URL", None)
@@ -282,7 +282,7 @@ def test_get_grounding_with_no_database_url_returns_inline(
 def test_get_grounding_with_empty_database_url_returns_inline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DATABASE_URL='': la factory también degrada (falsy)."""
+    """DATABASE_URL='': the factory also degrades (falsy)."""
     from clinibrium.config import get_settings
 
     monkeypatch.setattr(get_settings(), "DATABASE_URL", "")
@@ -293,10 +293,10 @@ def test_get_grounding_with_empty_database_url_returns_inline(
 def test_get_grounding_with_unreachable_db_returns_inline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DATABASE_URL set pero host:port no reachable ⇒ InlineGrounding."""
+    """DATABASE_URL set but host:port unreachable ⇒ InlineGrounding."""
     from clinibrium.config import get_settings
 
-    # 127.0.0.1:1 es prácticamente siempre unreachable
+    # 127.0.0.1:1 is virtually always unreachable
     monkeypatch.setattr(
         get_settings(), "DATABASE_URL", "postgresql://x:x@127.0.0.1:1/x"
     )
@@ -307,29 +307,29 @@ def test_get_grounding_with_unreachable_db_returns_inline(
 def test_get_grounding_does_not_raise_on_any_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`get_grounding()` NUNCA levanta — ni con URL vacía, ni con DSN malformado."""
+    """`get_grounding()` NEVER raises — not with an empty URL nor a malformed DSN."""
     from clinibrium.config import get_settings
 
     for url in (None, "", "not a url", "postgresql://", "postgresql://x@"):
         monkeypatch.setattr(get_settings(), "DATABASE_URL", url)
-        # Solo constatamos que no levanta
+        # We only assert it does not raise
         _ = get_grounding()
 
 
 # =========================================================================
-# (4) Embedder — determinista (mismo texto → mismo vector)
+# (4) Embedder — deterministic (same text → same vector)
 # =========================================================================
 
 
 def test_embedder_is_deterministic() -> None:
-    """Mismo texto + misma dim ⇒ mismo vector."""
+    """Same text + same dim ⇒ same vector."""
     a = embed_text("vértigo posicional breve con nistagmo torsional")
     b = embed_text("vértigo posicional breve con nistagmo torsional")
     assert a == b
 
 
 def test_embedder_is_deterministic_across_calls() -> None:
-    """100 llamadas idénticas ⇒ 100 vectores idénticos."""
+    """100 identical calls ⇒ 100 identical vectors."""
     text = "ataxia troncal severa con nistagmo vertical puro"
     first = embed_text(text)
     for _ in range(100):
@@ -337,10 +337,10 @@ def test_embedder_is_deterministic_across_calls() -> None:
 
 
 def test_embedder_is_deterministic_independent_process_objects() -> None:
-    """Determinismo via el mismo texto en dos instantes distantes (mismo
-    proceso) — confirma que no hay estado oculto."""
+    """Determinism via the same text at two distant moments (same
+    process) — confirms there is no hidden state."""
     v1 = embed_text("hipoacusia fluctuante con tinnitus y plenitud aural")
-    # ... (imaginemos código de cliente en el medio) ...
+    # ... (imagine client code in between) ...
     v2 = embed_text("hipoacusia fluctuante con tinnitus y plenitud aural")
     assert v1 == v2
 
@@ -352,7 +352,7 @@ def test_embedder_default_dim_is_256() -> None:
 
 
 def test_embedder_returns_l2_normalized_vector() -> None:
-    """El vector es L2-normalizado: ||v||_2 ≈ 1 (salvo texto vacío)."""
+    """The vector is L2-normalized: ||v||_2 ≈ 1 (except for empty text)."""
     import math
 
     v = embed_text("vértigo continuo espontáneo con náuseas y vómitos")
@@ -361,7 +361,7 @@ def test_embedder_returns_l2_normalized_vector() -> None:
 
 
 def test_embedder_empty_text_returns_zero_vector() -> None:
-    """Texto vacío / solo stopwords ⇒ vector cero (sin normalizar)."""
+    """Empty text / stopwords only ⇒ zero vector (not normalized)."""
     v_empty = embed_text("")
     v_stop = embed_text("de la el y a")
     assert v_empty == [0.0] * EMBED_DIM
@@ -369,28 +369,28 @@ def test_embedder_empty_text_returns_zero_vector() -> None:
 
 
 def test_embedder_different_texts_produce_different_vectors() -> None:
-    """Textos distintos producen vectores distintos (sanity)."""
+    """Different texts produce different vectors (sanity)."""
     a = embed_text("vértigo posicional breve con nistagmo torsional")
     b = embed_text("hipoacusia fluctuante con tinnitus y plenitud aural")
     assert a != b
 
 
 def test_embedder_tokenize_basic() -> None:
-    """Tokenizador: lowercase, drop de stopwords, drop de tokens <3 chars."""
+    """Tokenizer: lowercase, stopword drop, drop of tokens <3 chars."""
     toks = _tokenize("El vértigo POSICIONAL es breve y se asocia a nistagmo")
     assert "vértigo" in toks
     assert "posicional" in toks
     assert "breve" in toks
     assert "asocia" in toks
     assert "nistagmo" in toks
-    # Stopwords filtradas
+    # Stopwords filtered out
     assert "el" not in toks
     assert "y" not in toks
     assert "a" not in toks
 
 
 def test_build_query_text_includes_candidates_and_features() -> None:
-    """`build_query_text` compone features estructuradas + top diagnósticos."""
+    """`build_query_text` composes structured features + top diagnoses."""
     f = CaseFeatures(
         trigger=Trigger.positional_head,
         timing_pattern=TimingPattern.episodic_triggered,
@@ -404,18 +404,18 @@ def test_build_query_text_includes_candidates_and_features() -> None:
     )
     assert "bppv_posterior" in q
     assert "meniere" in q
-    # El feature `trigger=positional_head` aparece por nombre
+    # The `trigger=positional_head` feature appears by name
     assert "positional_head" in q or "trigger" in q
 
 
 # =========================================================================
-# (5) Tests de pgvector — skippean si no hay DB
+# (5) pgvector tests — skipped when no DB is available
 # =========================================================================
 
 
 def test_pgvector_ingest_and_retrieve(require_db: None) -> None:
-    """Si hay DB: ingest escribe el CORPUS y retrieve devuelve chunks
-    relevantes para el query. Skippea si no hay DB.
+    """With a DB: ingest writes the CORPUS and retrieve returns chunks
+    relevant to the query. Skipped when no DB is available.
     """
     import asyncio
 
@@ -439,18 +439,17 @@ def test_pgvector_ingest_and_retrieve(require_db: None) -> None:
         return n, chunks
 
     n, chunks = asyncio.run(_run())
-    assert n > 0, "ingest no escribió filas"
-    assert len(chunks) > 0, "retrieve no devolvió chunks"
-    # Los chunks vienen del CORPUS (cualquiera de los 8 diagnósticos
-    # es válido, pero el espacio de búsqueda está sobre el universo
-    # indexado)
+    assert n > 0, "ingest wrote no rows"
+    assert len(chunks) > 0, "retrieve returned no chunks"
+    # The chunks come from the CORPUS (any of the 8 diagnoses is
+    # valid, but the search space is over the indexed universe)
     assert all(isinstance(c, GroundingChunk) for c in chunks)
     assert all(c.source_id.startswith("clinibrium-paraphrase:") for c in chunks)
 
 
 def test_pgvector_ingest_is_idempotent(require_db: None) -> None:
-    """`ingest()` puede llamarse varias veces: la tabla queda consistente
-    con el CORPUS (mismo número de filas, mismo source_ids)."""
+    """`ingest()` can be called multiple times: the table stays consistent
+    with the CORPUS (same row count, same source_ids)."""
     import asyncio
 
     from clinibrium.config import get_settings
@@ -466,14 +465,14 @@ def test_pgvector_ingest_is_idempotent(require_db: None) -> None:
 
     n1, n2 = asyncio.run(_run())
     assert n1 == n2
-    # Total de chunks del CORPUS (≥8, los 8 diagnósticos con 1+ cada uno)
+    # Total CORPUS chunks (≥8, the 8 diagnoses with 1+ each)
     assert n1 >= 8
 
 
 def test_pgvector_retrieve_degrades_when_db_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PgvectorGrounding.retrieve contra DB no reachable ⇒ [] (no rompe)."""
+    """PgvectorGrounding.retrieve against an unreachable DB ⇒ [] (does not break)."""
     g = PgvectorGrounding("postgresql://x:x@127.0.0.1:1/x")
     chunks = g.retrieve(  # sync entry point (Protocol)
         _diff((Diagnosis.bppv_posterior, 0.9)),
@@ -484,8 +483,8 @@ def test_pgvector_retrieve_degrades_when_db_unreachable(
 
 
 # =========================================================================
-# (6) INV — grounding solo importa contracts (+ config + DB driver).
-# Verificación por AST (como en otros tests del repo).
+# (6) INV — grounding only imports contracts (+ config + DB driver).
+# Verified via AST (as in other tests in this repo).
 # =========================================================================
 
 
@@ -518,8 +517,8 @@ def _iter_imports(py_file: Path) -> list[tuple[int, str]]:
 
 
 def test_grounding_does_not_import_forbidden_modules() -> None:
-    """El paquete `grounding` SOLO importa de `clinibrium.contracts` y
-    `clinibrium.config` (settings) — nunca motores, reasoner, orchestrator,
+    """The `grounding` package ONLY imports from `clinibrium.contracts` and
+    `clinibrium.config` (settings) — never engines, reasoner, orchestrator,
     rails, api, audit, ml_client, storage, fhir.
     """
     pkg_root = Path(inspect.getfile(InlineGrounding)).parent  # grounding/
@@ -532,14 +531,14 @@ def test_grounding_does_not_import_forbidden_modules() -> None:
             if not any(mod == a or mod.startswith(a + ".") for a in allowed):
                 offenders.append(f"{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "grounding importa módulos prohibidos:\n  "
+        "grounding imports forbidden modules:\n  "
         + "\n  ".join(offenders)
     )
 
 
 def test_grounding_does_not_call_claude_or_set_diagnosis() -> None:
-    """Sanity: el módulo NO importa el SDK de Anthropic ni define campos
-    de diagnosis vinculante. Es solo retrieval.
+    """Sanity: the module does NOT import the Anthropic SDK nor define
+    binding diagnosis fields. It is retrieval only.
     """
     pkg_root = Path(inspect.getfile(InlineGrounding)).parent
     forbidden_libs = ("anthropic", "openai", "google.generativeai")
@@ -549,6 +548,6 @@ def test_grounding_does_not_call_claude_or_set_diagnosis() -> None:
             if any(mod == bad or mod.startswith(bad + ".") for bad in forbidden_libs):
                 offenders.append(f"{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "grounding no debe llamar a proveedores de LLM:\n  "
+        "grounding must not call LLM providers:\n  "
         + "\n  ".join(offenders)
     )

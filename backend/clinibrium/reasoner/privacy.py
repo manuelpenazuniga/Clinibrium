@@ -1,24 +1,24 @@
-"""Validador INV-2 (fail-closed): choke point del payload que cruza la red."""
+"""INV-2 validator (fail-closed): choke point for the payload that crosses the network."""
 from __future__ import annotations
 
 from clinibrium.contracts import NETWORK_SAFE_FIELDS, CaseFeatures
 
 
 class PrivacyViolation(Exception):
-    """Un campo fuera del allowlist NETWORK_SAFE_FIELDS intentó cruzar la red."""
+    """A field outside the NETWORK_SAFE_FIELDS allowlist tried to cross the network."""
 
 
 def build_network_payload(features: CaseFeatures) -> dict:
-    """ÚNICO constructor del payload que cruza la red a Claude. Fail-closed.
+    """The ONLY builder of the payload that crosses the network to Claude. Fail-closed.
 
-    Si aparece cualquier clave fuera de NETWORK_SAFE_FIELDS, LEVANTA (bug de
-    seguridad, no algo a filtrar en silencio). Devuelve el dict validado que
-    engine.py usa para armar el prompt.
+    If any key outside NETWORK_SAFE_FIELDS appears, it RAISES (a security
+    bug, not something to filter silently). Returns the validated dict that
+    engine.py uses to build the prompt.
     """
     payload = features.model_dump(mode="json")
     extra = set(payload.keys()) - NETWORK_SAFE_FIELDS
     if extra:
         raise PrivacyViolation(
-            f"Campos fuera del allowlist intentando cruzar la red: {extra}"
+            f"Fields outside the allowlist attempting to cross the network: {extra}"
         )
     return payload

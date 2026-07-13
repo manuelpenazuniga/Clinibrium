@@ -1,4 +1,4 @@
-"""Test async del endpoint /health."""
+"""Async test for the /health endpoint."""
 from __future__ import annotations
 
 import pytest

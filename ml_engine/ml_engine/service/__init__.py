@@ -1,1 +1,1 @@
-"""Servicio HTTP de Track B — sirve el contrato congelado ``POST /predict``."""
+"""Track B HTTP service — serves the frozen ``POST /predict`` contract."""

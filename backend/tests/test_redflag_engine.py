@@ -1,15 +1,16 @@
-"""Tests del `RedFlagEngine` (T4) — INV-5 + cobertura de la tabla `RULES`.
+"""Tests for the `RedFlagEngine` (T4) — INV-5 + coverage of the `RULES` table.
 
-Cubre los 4 criterios de aceptación de la tarea:
-  1. Un test POSITIVO por CADA regla de `RULES` (id, label, severity,
-     forced_actions correctos en el hit correspondiente).
-  2. Test NEGATIVO base: caso de BPPV benigno típico → `red_flag_activa
-     == False` y sin `DERIVAR_URGENTE`.
-  3. `red_flag_activa` True/False según haya o no `DERIVAR_URGENTE`.
-  4. Determinismo: mismas features → mismo resultado.
-  5. INV-5: `redflag_engine` NO importa `differential_engine` /
-     `reasoner` / `ml_client` / `orchestrator`. Solo `contracts` (y
-     submódulos propios del paquete).
+Covers the task's 4 acceptance criteria:
+  1. One POSITIVE test for EACH rule in `RULES` (correct id, label,
+     severity, forced_actions on the corresponding hit).
+  2. Base NEGATIVE test: typical benign BPPV case → `red_flag_activa
+     == False` and no `DERIVAR_URGENTE`.
+  3. `red_flag_activa` True/False depending on whether `DERIVAR_URGENTE`
+     is present.
+  4. Determinism: same features → same result.
+  5. INV-5: `redflag_engine` does NOT import `differential_engine` /
+     `reasoner` / `ml_client` / `orchestrator`. Only `contracts` (and
+     the package's own submodules).
 """
 from __future__ import annotations
 
@@ -39,20 +40,20 @@ from clinibrium.redflag_engine import (
 )
 
 # =========================================================================
-# Helpers de construcción de casos (minimal features por regla)
+# Case-building helpers (minimal features per rule)
 # =========================================================================
 
 
 def _bppv_benign() -> CaseFeatures:
-    """Caso negativo base: BPPV de canal posterior, típico, benigno.
+    """Base negative case: typical, benign posterior-canal BPPV.
 
-    Características:
-      - duración < 1 min
-      - gatillado por posición de la cabeza
-      - patrón temporal episódico-disparado (NO AVS)
-      - nistagmo upbeating-torsional (mixed) con latencia y fatigabilidad
-      - Dix-Hallpike positivo, torsión confirmada por clínico
-      - sin signos focales, sin factores de riesgo vascular
+    Characteristics:
+      - duration < 1 min
+      - triggered by head position
+      - episodic-triggered temporal pattern (NOT AVS)
+      - upbeating-torsional (mixed) nystagmus with latency and fatigability
+      - positive Dix-Hallpike, torsion confirmed by clinician
+      - no focal signs, no vascular risk factors
     """
     return CaseFeatures(
         duration=SymptomDuration.under_1min,
@@ -74,13 +75,13 @@ def _bppv_benign() -> CaseFeatures:
 def _hit(result, rule_id: str):
     matches = [h for h in result.hits if h.id == rule_id]
     assert matches, (
-        f"regla {rule_id} no presente en hits={[h.id for h in result.hits]}"
+        f"rule {rule_id} not present in hits={[h.id for h in result.hits]}"
     )
     return matches[0]
 
 
 # =========================================================================
-# Tests POSITIVOS — uno por cada regla de RULES
+# POSITIVE tests — one per rule in RULES
 # =========================================================================
 
 
@@ -98,7 +99,7 @@ def test_a1_avs_central_hints() -> None:
 
 
 def test_a1_fires_with_skew_deviation_alone() -> None:
-    """Auditoría fix #2: A1 también dispara por skew_deviation aislada en AVS."""
+    """Audit fix #2: A1 also fires on isolated skew_deviation in AVS."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         skew_deviation=True,
@@ -112,9 +113,9 @@ def test_a1_fires_with_skew_deviation_alone() -> None:
 
 
 def test_a1_fires_with_nystagmus_direction_changing_enum() -> None:
-    """Auditoría fix #2: A1 también dispara cuando el nistagmo cambiante viene
-    por el enum (no por el bool). A3 también dispara por diseño; el test
-    sólo exige que A1 esté con NO_BENIGNO + DERIVAR_URGENTE."""
+    """Audit fix #2: A1 also fires when the direction-changing nystagmus comes
+    via the enum (not the bool). A3 also fires by design; the test only
+    requires A1 to be present with NO_BENIGNO + DERIVAR_URGENTE."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         nystagmus_direction=NystagmusDirection.direction_changing,
@@ -124,7 +125,7 @@ def test_a1_fires_with_nystagmus_direction_changing_enum() -> None:
     assert h.severity == "high"
     assert set(h.forced_actions) == {ForcedAction.NO_BENIGNO, ForcedAction.DERIVAR_URGENTE}
     assert r.red_flag_activa is True
-    # A3 también dispara por la misma razón — verificamos que ambas estén
+    # A3 also fires for the same reason — verify both are present
     assert any(h.id == "A3" for h in r.hits)
 
 
@@ -183,7 +184,7 @@ def test_a5_any_focal_sign() -> None:
 def test_a5_fires_for_each_focal_sign() -> None:
     for sign in FocalSign:
         r = evaluate(CaseFeatures(focal_signs={sign}))
-        assert any(h.id == "A5" for h in r.hits), f"A5 no disparó con focal_sign={sign}"
+        assert any(h.id == "A5" for h in r.hits), f"A5 did not fire with focal_sign={sign}"
 
 
 def test_a6_sudden_severe_headache_or_neck_pain() -> None:
@@ -196,7 +197,7 @@ def test_a6_sudden_severe_headache_or_neck_pain() -> None:
 
 
 def test_a7_avs_age_vascular_risk() -> None:
-    """A7 es medium: ESCALAR + NO_BENIGNO, NO activa red_flag por sí sola."""
+    """A7 is medium: ESCALAR + NO_BENIGNO, does NOT activate red_flag on its own."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         age_years=AGE_CENTRAL_THRESHOLD,
@@ -206,7 +207,7 @@ def test_a7_avs_age_vascular_risk() -> None:
     h = _hit(r, "A7")
     assert h.severity == "medium"
     assert set(h.forced_actions) == {ForcedAction.NO_BENIGNO, ForcedAction.ESCALAR}
-    # medium no fuerza derivación → red_flag_activa debe ser False en aislamiento
+    # medium does not force referral → red_flag_activa must be False in isolation
     assert r.red_flag_activa is False
     assert ForcedAction.ESCALAR in r.forced_actions
     assert ForcedAction.NO_BENIGNO in r.forced_actions
@@ -233,9 +234,9 @@ def test_a7_does_not_fire_without_risk_factor() -> None:
 
 
 def test_a8_sudden_unilateral_hearing_loss_with_avs() -> None:
-    """A8 es la combinación AICA (súbita + AVS). B1 también dispara aquí por
-    diseño (B1 cubre la súbita aislada o con vértigo); verificamos que A8 está
-    con su acción específica."""
+    """A8 is the AICA combination (sudden + AVS). B1 also fires here by
+    design (B1 covers the isolated sudden loss or with vertigo); we verify
+    A8 is present with its specific action."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         hearing_loss=HearingLoss.sudden_unilateral,
@@ -248,7 +249,7 @@ def test_a8_sudden_unilateral_hearing_loss_with_avs() -> None:
 
 
 def test_a8_includes_no_benigno_in_forced_actions() -> None:
-    """Auditoría fix #4: A8 (AICA) NO es benigna — incluye NO_BENIGNO."""
+    """Audit fix #4: A8 (AICA) is NOT benign — it includes NO_BENIGNO."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         hearing_loss=HearingLoss.sudden_unilateral,
@@ -260,8 +261,8 @@ def test_a8_includes_no_benigno_in_forced_actions() -> None:
 
 
 def test_a9_altered_consciousness_afebrile() -> None:
-    """Auditoría fix #1 [CRÍTICO]: altered_consciousness sin fiebre dispara A9
-    (p.ej. meningitis afébril, trombosis basilar, herniación)."""
+    """Audit fix #1 [CRITICAL]: altered_consciousness without fever fires A9
+    (e.g. afebrile meningitis, basilar thrombosis, herniation)."""
     f = CaseFeatures(altered_consciousness=True, fever=False)
     r = evaluate(f)
     h = _hit(r, "A9")
@@ -269,13 +270,13 @@ def test_a9_altered_consciousness_afebrile() -> None:
     assert h.severity == "high"
     assert h.forced_actions == [ForcedAction.DERIVAR_URGENTE]
     assert r.red_flag_activa is True
-    # B2 NO debe disparar (no hay fiebre)
+    # B2 must NOT fire (no fever)
     assert all(h.id != "B2" for h in r.hits)
 
 
 def test_a9_fires_alongside_b2_when_fever_and_altered_consciousness() -> None:
-    """A9 y B2 son reglas independientes: ambas disparan si hay fiebre Y
-    alteración de conciencia (cobertura redundante a propósito)."""
+    """A9 and B2 are independent rules: both fire when there is fever AND
+    altered consciousness (redundant coverage on purpose)."""
     f = CaseFeatures(fever=True, altered_consciousness=True)
     r = evaluate(f)
     assert any(h.id == "A9" for h in r.hits)
@@ -290,8 +291,8 @@ def test_a9_does_not_fire_when_consciousness_intact() -> None:
 
 
 def test_a10_nystagmus_not_suppressed_in_avs() -> None:
-    """Auditoría fix #3: nistagmo NO suprimido por fijación en AVS es signo
-    central. Dispara solo con `False` explícito, no con `None`."""
+    """Audit fix #3: nystagmus NOT suppressed by fixation in AVS is a central
+    sign. Fires only on explicit `False`, not on `None`."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         nystagmus_suppressed_by_fixation=False,
@@ -304,7 +305,7 @@ def test_a10_nystagmus_not_suppressed_in_avs() -> None:
 
 
 def test_a10_does_not_fire_when_suppressed_by_fixation_is_none() -> None:
-    """A10 NO dispara con valor desconocido (None): solo False explícito."""
+    """A10 does NOT fire on an unknown value (None): only explicit False."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         nystagmus_suppressed_by_fixation=None,
@@ -314,7 +315,7 @@ def test_a10_does_not_fire_when_suppressed_by_fixation_is_none() -> None:
 
 
 def test_a10_does_not_fire_when_suppressed_is_true() -> None:
-    """Nistagmo suprimido por fijación = signo periférico. A10 NO dispara."""
+    """Nystagmus suppressed by fixation = peripheral sign. A10 does NOT fire."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
         nystagmus_suppressed_by_fixation=True,
@@ -324,7 +325,7 @@ def test_a10_does_not_fire_when_suppressed_is_true() -> None:
 
 
 def test_a10_does_not_fire_outside_avs() -> None:
-    """A10 requiere AVS — fuera de AVS el campo no implica centralidad."""
+    """A10 requires AVS — outside AVS the field does not imply centrality."""
     f = CaseFeatures(
         timing_pattern=TimingPattern.episodic_triggered,
         nystagmus_suppressed_by_fixation=False,
@@ -334,16 +335,16 @@ def test_a10_does_not_fire_outside_avs() -> None:
 
 
 def test_b1_sudden_unilateral_hearing_loss_isolated() -> None:
-    """T-CLIN r1: hipoacusia súbita AISLADA (sin AVS) = ORL PRIORITARIO (48h),
-    NO urgencia. B1 aporta ESCALAR (prioritaria), no DERIVAR_URGENTE, y NO
-    activa red_flag_activa (que es solo para inmediata)."""
+    """T-CLIN r1: ISOLATED sudden hearing loss (no AVS) = PRIORITY ENT (48h),
+    NOT an emergency. B1 contributes ESCALAR (priority), not DERIVAR_URGENTE,
+    and does NOT activate red_flag_activa (which is only for immediate)."""
     f = CaseFeatures(hearing_loss=HearingLoss.sudden_unilateral)
     r = evaluate(f)
     h = _hit(r, "B1")
     assert h.severity == "medium"
     assert h.forced_actions == [ForcedAction.ESCALAR]
-    assert r.red_flag_activa is False  # aislada NO es urgencia
-    # A8 NO debe disparar sin AVS
+    assert r.red_flag_activa is False  # isolated is NOT an emergency
+    # A8 must NOT fire without AVS
     assert all(hit.id != "A8" for hit in r.hits)
 
 
@@ -364,7 +365,7 @@ def test_b2_fires_with_altered_consciousness() -> None:
 
 
 def test_b3_cardiogenic_pattern_escalates_only() -> None:
-    """B3 es medium: solo ESCALAR; no debe activar red_flag por sí solo."""
+    """B3 is medium: ESCALAR only; must not activate red_flag on its own."""
     f = CaseFeatures(presyncope_syncope=True)
     r = evaluate(f)
     h = _hit(r, "B3")
@@ -375,7 +376,7 @@ def test_b3_cardiogenic_pattern_escalates_only() -> None:
 
 
 def test_b3_fires_with_chest_pain_alone() -> None:
-    """Auditoría fix #5: B3 dispara con chest_pain aislado."""
+    """Audit fix #5: B3 fires with isolated chest_pain."""
     f = CaseFeatures(chest_pain=True)
     r = evaluate(f)
     h = _hit(r, "B3")
@@ -385,7 +386,7 @@ def test_b3_fires_with_chest_pain_alone() -> None:
 
 
 def test_b3_fires_with_palpitations_alone() -> None:
-    """Auditoría fix #5: B3 dispara con palpitations aislado."""
+    """Audit fix #5: B3 fires with isolated palpitations."""
     f = CaseFeatures(palpitations=True)
     r = evaluate(f)
     h = _hit(r, "B3")
@@ -404,7 +405,7 @@ def test_b4_otitis_or_mastoiditis() -> None:
 
 
 def test_b5_recent_head_neck_trauma() -> None:
-    """B5 medium: PRECAUCION_EXAMEN + ESCALAR; no activa red_flag por sí solo."""
+    """B5 medium: PRECAUCION_EXAMEN + ESCALAR; does not activate red_flag on its own."""
     f = CaseFeatures(recent_head_neck_trauma=True)
     r = evaluate(f)
     h = _hit(r, "B5")
@@ -453,7 +454,7 @@ def test_e4_worsening_during_flow() -> None:
 
 
 # =========================================================================
-# Test NEGATIVO base — BPPV benigno típico
+# Base NEGATIVE test — typical benign BPPV
 # =========================================================================
 
 
@@ -471,15 +472,15 @@ def test_bppv_benign_no_red_flag() -> None:
 
 
 def test_red_flag_activa_false_when_only_escalate_or_precaucion() -> None:
-    """Combinación de reglas medium (sin DERIVAR_URGENTE) no debe activar
-    red_flag_activa aunque las forced_actions del resultado sean no-vacías."""
+    """A combination of medium rules (no DERIVAR_URGENTE) must not activate
+    red_flag_activa even when the result's forced_actions are non-empty."""
     f = CaseFeatures(
         cervical_pathology=True,  # C1
         cardiovascular_instability=True,  # C3
         presyncope_syncope=True,  # B3
     )
     r = evaluate(f)
-    assert r.hits  # hay hits
+    assert r.hits  # there are hits
     assert r.red_flag_activa is False
     assert ForcedAction.DERIVAR_URGENTE not in r.forced_actions
     assert ForcedAction.PRECAUCION_EXAMEN in r.forced_actions
@@ -487,10 +488,10 @@ def test_red_flag_activa_false_when_only_escalate_or_precaucion() -> None:
 
 
 def test_red_flag_activa_true_with_any_derivar_urgente() -> None:
-    """Una sola regla con DERIVAR_URGENTE ya activa red_flag, aunque haya
-    también reglas medium en el mismo caso."""
+    """A single rule with DERIVAR_URGENTE already activates red_flag, even
+    when medium rules are also present in the same case."""
     f = CaseFeatures(
-        cervical_pathology=True,  # C1 — precaution, no red flag por sí sola
+        cervical_pathology=True,  # C1 — precaution, no red flag on its own
         focal_signs={FocalSign.dysarthria},  # A5 — DERIVAR_URGENTE
     )
     r = evaluate(f)
@@ -501,7 +502,7 @@ def test_red_flag_activa_true_with_any_derivar_urgente() -> None:
 
 
 # =========================================================================
-# Determinismo
+# Determinism
 # =========================================================================
 
 
@@ -526,7 +527,7 @@ def test_evaluate_does_not_mutate_input() -> None:
 
 
 # =========================================================================
-# INV-5 — `redflag_engine` solo importa `contracts` (y submódulos propios)
+# INV-5 — `redflag_engine` only imports `contracts` (and its own submodules)
 # =========================================================================
 
 
@@ -539,7 +540,7 @@ _FORBIDDEN_IMPORTS = {
 
 
 def _iter_imports(py_file: Path) -> list[tuple[int, str]]:
-    """Devuelve (line_no, module) de CADA import de `clinibrium.*` encontrado."""
+    """Returns (line_no, module) for EVERY `clinibrium.*` import found."""
     tree = ast.parse(py_file.read_text(encoding="utf-8"))
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -555,8 +556,8 @@ def _iter_imports(py_file: Path) -> list[tuple[int, str]]:
 
 
 def test_redflag_engine_does_not_import_forbidden_modules() -> None:
-    """INV-5: ninguna `.py` de `redflag_engine` puede importar
-    `differential_engine`, `reasoner`, `ml_client` u `orchestrator`."""
+    """INV-5: no `.py` in `redflag_engine` may import
+    `differential_engine`, `reasoner`, `ml_client` or `orchestrator`."""
     pkg_root = Path(__file__).resolve().parents[1] / "clinibrium" / "redflag_engine"
     offenders: list[str] = []
     for py in sorted(pkg_root.glob("*.py")):
@@ -565,13 +566,13 @@ def test_redflag_engine_does_not_import_forbidden_modules() -> None:
                 if mod == forbidden or mod.startswith(forbidden + "."):
                     offenders.append(f"{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "INV-5 violada — imports prohibidos desde redflag_engine:\n  "
+        "INV-5 violated — forbidden imports from redflag_engine:\n  "
         + "\n  ".join(offenders)
     )
 
 
 def test_redflag_engine_only_imports_from_contracts_and_self() -> None:
-    """Refuerzo: el único módulo externo permitido es `clinibrium.contracts`."""
+    """Reinforcement: the only allowed external module is `clinibrium.contracts`."""
     pkg_root = Path(__file__).resolve().parents[1] / "clinibrium" / "redflag_engine"
     allowed_roots = {"clinibrium.contracts", "clinibrium.redflag_engine"}
     offenders: list[str] = []
@@ -582,19 +583,19 @@ def test_redflag_engine_only_imports_from_contracts_and_self() -> None:
             if not any(mod == a or mod.startswith(a + ".") for a in allowed_roots):
                 offenders.append(f"{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "Import cross-module no permitido desde redflag_engine:\n  "
+        "Disallowed cross-module import from redflag_engine:\n  "
         + "\n  ".join(offenders)
     )
 
 
 # =========================================================================
-# Sanity checks sobre la tabla RULES
+# Sanity checks over the RULES table
 # =========================================================================
 
 
 def test_rules_table_covers_all_documented_ids() -> None:
-    """La tabla contiene exactamente los IDs documentados en la spec T4
-    y en la auditoría de correctness (A9, A10)."""
+    """The table contains exactly the IDs documented in the T4 spec
+    and in the correctness audit (A9, A10)."""
     expected = {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10",
                 "B1", "B2", "B3", "B4", "B5",
                 "C1", "C2", "C3",
@@ -623,4 +624,4 @@ def test_all_rules_are_red_flag_rule_instances() -> None:
 
 def test_rule_ids_are_unique() -> None:
     ids = [r.id for r in RULES]
-    assert len(ids) == len(set(ids)), f"ids duplicados: {ids}"
+    assert len(ids) == len(set(ids)), f"duplicate ids: {ids}"

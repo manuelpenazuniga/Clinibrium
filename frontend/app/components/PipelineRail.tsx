@@ -4,8 +4,8 @@ import type { StageName } from "@/lib/types";
 import { STAGE_ORDER } from "@/lib/labels";
 
 /**
- * El pipeline como riel: nodos deterministas sólidos, aditivos (ML/Claude)
- * punteados, el sello de rieles enfatizado. La tesis, dibujada.
+ * The pipeline as a rail: deterministic nodes solid, additive ones (ML/Claude)
+ * dotted, the rails seal emphasized. The thesis, drawn.
  */
 export default function PipelineRail({
   completed,

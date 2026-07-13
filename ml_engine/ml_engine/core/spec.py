@@ -1,16 +1,16 @@
-"""Tipos AGNÓSTICOS de dominio para la capa ML (la frontera de plataforma).
+"""Domain-AGNOSTIC types for the ML layer (the platform boundary).
 
-El core NO conoce vértigo. Un dominio se define (en ``ml_engine.domains.*``)
-escribiendo tres objetos de config:
+The core knows NOTHING about vertigo. A domain is defined (in
+``ml_engine.domains.*``) by writing three config objects:
 
-  - ``FeatureSpec``   — qué features existen, sus tipos, qué transformadores
-    derivados PUROS provee el dominio, y cuáles features numéricas son "de
-    riesgo" (dirección monótona en el gate de peligro).
-  - ``LabelHierarchy`` — la forma del árbol de etiquetas + qué rama es "peligro".
-  - ``SyntheticSpec`` — priors/distribuciones del generador sintético.
+  - ``FeatureSpec``   — which features exist, their types, which PURE derived
+    transformers the domain provides, and which numeric features are "risk"
+    features (monotone direction in the danger gate).
+  - ``LabelHierarchy`` — the shape of the label tree + which branch is "danger".
+  - ``SyntheticSpec`` — priors/distributions for the synthetic generator.
 
-``encode.py`` aplica los transformadores derivados **a ciegas** (no contiene
-constantes de dominio). Así un 2º dominio se conecta cambiando solo
+``encode.py`` applies the derived transformers **blindly** (it contains no
+domain constants). This way a 2nd domain plugs in by changing only
 ``domains/*`` (INV-12).
 """
 from __future__ import annotations
@@ -21,24 +21,24 @@ from typing import Literal
 
 FeatureKind = Literal["categorical", "boolean", "numeric"]
 Row = Mapping[str, object]
-"""Fila cruda de input: dict feature→valor (categórica=str, bool, num, o None)."""
+"""Raw input row: feature→value dict (categorical=str, bool, num, or None)."""
 
 
 @dataclass(frozen=True)
 class RawFeature:
-    """Feature cruda declarada por el dominio."""
+    """Raw feature declared by the domain."""
 
     name: str
     kind: FeatureKind
-    categories: tuple[str, ...] = ()  # solo para categorical
+    categories: tuple[str, ...] = ()  # only for categorical
 
 
 @dataclass(frozen=True)
 class DerivedFeature:
-    """Feature numérica derivada por un transformador PURO del dominio.
+    """Numeric feature derived by a PURE transformer from the domain.
 
-    ``fn`` recibe la fila cruda y devuelve un ``float`` (NaN-safe: nunca
-    levanta ante ``None`` o claves ausentes). El core la ejecuta a ciegas.
+    ``fn`` receives the raw row and returns a ``float`` (NaN-safe: it never
+    raises on ``None`` or missing keys). The core runs it blindly.
     """
 
     name: str
@@ -49,23 +49,23 @@ class DerivedFeature:
 class FeatureSpec:
     raw: tuple[RawFeature, ...]
     derived: tuple[DerivedFeature, ...] = ()
-    # Features numéricas (raw o derivadas) que empujan monótonamente al gate
-    # de peligro (CatBoost monotone_constraints=+1). DEBEN ser numéricas.
+    # Numeric features (raw or derived) that push monotonically toward the
+    # danger gate (CatBoost monotone_constraints=+1). They MUST be numeric.
     risk_features: tuple[str, ...] = ()
-    # Claves de input aceptadas por el servicio (extra="forbid", frontera de
-    # privacidad). Si está vacío, se deriva de las raw features.
+    # Input keys accepted by the service (extra="forbid", privacy boundary).
+    # If empty, it is derived from the raw features.
     input_allowlist: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         names = [f.name for f in self.raw] + [d.name for d in self.derived]
         dupes = {n for n in names if names.count(n) > 1}
         if dupes:
-            raise ValueError(f"FeatureSpec: nombres duplicados {dupes}")
+            raise ValueError(f"FeatureSpec: duplicate names {dupes}")
         numeric = set(self.numeric_feature_names)
         bad = [r for r in self.risk_features if r not in numeric]
         if bad:
             raise ValueError(
-                f"FeatureSpec: risk_features deben ser numéricas (raw numeric o derived): {bad}"
+                f"FeatureSpec: risk_features must be numeric (raw numeric or derived): {bad}"
             )
 
     @property
@@ -74,7 +74,7 @@ class FeatureSpec:
 
     @property
     def feature_names(self) -> tuple[str, ...]:
-        """Orden estable: raw (en orden) + derivadas (en orden)."""
+        """Stable order: raw (in order) + derived (in order)."""
         return tuple(f.name for f in self.raw) + tuple(d.name for d in self.derived)
 
     @property
@@ -83,7 +83,7 @@ class FeatureSpec:
 
     @property
     def numeric_feature_names(self) -> tuple[str, ...]:
-        """Numéricas para el modelo: raw numeric/boolean (encode a 0/1) + todas las derivadas."""
+        """Numerics for the model: raw numeric/boolean (encoded to 0/1) + all derived."""
         raw_num = tuple(f.name for f in self.raw if f.kind in ("numeric", "boolean"))
         return raw_num + tuple(d.name for d in self.derived)
 
@@ -94,7 +94,7 @@ class FeatureSpec:
 
 @dataclass(frozen=True)
 class Node:
-    """Nodo interno de la jerarquía: elige entre ``children`` (leaf o node_id)."""
+    """Internal node of the hierarchy: chooses among ``children`` (leaf or node_id)."""
 
     node_id: str
     children: tuple[str, ...]
@@ -102,30 +102,30 @@ class Node:
 
 @dataclass(frozen=True)
 class LabelHierarchy:
-    """Árbol de etiquetas (LCPN). ``root`` es el gate binario de peligro."""
+    """Label tree (LCPN). ``root`` is the binary danger gate."""
 
     root: str
     nodes: tuple[Node, ...]
     leaves: tuple[str, ...]
-    danger_child: str  # child del root que representa "peligro" (node_id o leaf)
+    danger_child: str  # child of the root that represents "danger" (node_id or leaf)
     abstain_label: str = "undetermined"
 
     def __post_init__(self) -> None:
         ids = {n.node_id for n in self.nodes}
         if self.root not in ids:
-            raise ValueError(f"root '{self.root}' no está en nodes")
+            raise ValueError(f"root '{self.root}' is not in nodes")
         leaf_set = set(self.leaves)
         for n in self.nodes:
             for c in n.children:
                 if c not in ids and c not in leaf_set:
-                    raise ValueError(f"child '{c}' de '{n.node_id}' no es node ni leaf")
+                    raise ValueError(f"child '{c}' of '{n.node_id}' is neither node nor leaf")
         root_children = self.node_by_id(self.root).children
         if len(root_children) != 2:
-            raise ValueError("el gate raíz debe ser binario (2 children)")
+            raise ValueError("the root gate must be binary (2 children)")
         if self.danger_child not in root_children:
-            raise ValueError(f"danger_child '{self.danger_child}' no es child del root")
+            raise ValueError(f"danger_child '{self.danger_child}' is not a child of the root")
         if self.abstain_label in leaf_set:
-            raise ValueError("abstain_label no debe ser una hoja entrenada")
+            raise ValueError("abstain_label must not be a trained leaf")
 
     def node_by_id(self, node_id: str) -> Node:
         for n in self.nodes:
@@ -141,7 +141,7 @@ class LabelHierarchy:
         return name in set(self.leaves)
 
     def path_to_leaf(self, leaf: str) -> tuple[tuple[str, str], ...]:
-        """Camino raíz→hoja como tupla de (node_id, child elegido)."""
+        """Root→leaf path as a tuple of (node_id, chosen child)."""
         if leaf not in set(self.leaves):
             raise KeyError(leaf)
 
@@ -158,7 +158,7 @@ class LabelHierarchy:
 
         result = _search(self.root)
         if result is None:
-            raise KeyError(f"hoja '{leaf}' inalcanzable")
+            raise KeyError(f"leaf '{leaf}' is unreachable")
         return result
 
 
@@ -172,7 +172,7 @@ class NumericDist:
 
 @dataclass(frozen=True)
 class LabelProfile:
-    """Distribuciones condicionales de features dado un label (generador)."""
+    """Conditional feature distributions given a label (generator)."""
 
     label: str
     prevalence: float
@@ -186,9 +186,9 @@ class SyntheticSpec:
     profiles: tuple[LabelProfile, ...]
     n_samples: int = 8000
     seed: int = 20260711
-    # Fracción de features que se dropean (→ faltante) por caso, para que el
-    # dato sintético se parezca a inputs reales ESPARSOS (Codex: stress con
-    # missingness). Evita sobre-confianza/sobre-abstención en inputs incompletos.
+    # Fraction of features dropped (→ missing) per case, so that the synthetic
+    # data resembles real SPARSE inputs (Codex: stress with missingness).
+    # Avoids over-confidence/over-abstention on incomplete inputs.
     missing_rate: float = 0.0
 
     @property
@@ -198,7 +198,7 @@ class SyntheticSpec:
 
 @dataclass(frozen=True)
 class Domain:
-    """Bundle de config que instancia la plataforma para un dominio."""
+    """Config bundle that instantiates the platform for one domain."""
 
     name: str
     features: FeatureSpec
@@ -210,5 +210,5 @@ class Domain:
         labels = set(self.synthetic.labels)
         if leaves != labels:
             raise ValueError(
-                f"[{self.name}] hojas de la jerarquía {leaves} ≠ labels del generador {labels}"
+                f"[{self.name}] hierarchy leaves {leaves} != generator labels {labels}"
             )

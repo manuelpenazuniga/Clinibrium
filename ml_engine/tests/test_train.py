@@ -1,4 +1,4 @@
-"""TB1.8 — train CLI: entrenar → guardar → cargar → predecir (roundtrip)."""
+"""TB1.8 — train CLI: train → save → load → predict (roundtrip)."""
 import re
 
 from ml_engine.core.model import HierarchicalCatBoost
@@ -10,16 +10,16 @@ def test_train_save_load_roundtrip(tmp_path) -> None:
     model, metrics = build_and_save(
         tmp_path, seed=20260711, n_samples=1200, params={"iterations": 100, "depth": 4}
     )
-    # model_version declara sintético + seed (AD-17)
+    # model_version declares synthetic + seed (AD-17)
     assert re.match(r"^synthetic-v\d+-seed\d+$", model.model_version)
 
-    # artifacts escritos
+    # artifacts written
     assert (tmp_path / "manifest.json").exists()
     assert (tmp_path / "MODEL_CARD.md").exists()
     card = (tmp_path / "MODEL_CARD.md").read_text()
-    assert "SINTÉTICO" in card and "recuperación del generador" in card
+    assert "SYNTHETIC" in card and "generator recovery" in card
 
-    # calibración + abstención persistidas (TB1.4/1.5)
+    # calibration + abstention persisted (TB1.4/1.5)
     loaded = HierarchicalCatBoost.load(tmp_path, vertigo.VERTIGO)
     assert loaded.model_version == model.model_version
     assert loaded.calibrator is not None and loaded.calibrator.temperature > 0
@@ -29,13 +29,13 @@ def test_train_save_load_roundtrip(tmp_path) -> None:
 
     row = {"trigger": "positional_head", "duration": "under_1min",
            "timing_pattern": "episodic_triggered", "dix_hallpike": "right_positive"}
-    # raw 8-hojas idénticas mem↔load
+    # raw 8-leaf identical mem↔load
     p_mem = model.predict_proba_one(row)
     p_load = loaded.predict_proba_one(row)
     assert set(p_load) == set(vertigo.HIERARCHY.leaves)
     for leaf in p_mem:
         assert abs(p_mem[leaf] - p_load[leaf]) < 1e-9
-    # predict_case = 9 claves (con undetermined), Σ≈1
+    # predict_case = 9 keys (with undetermined), Σ≈1
     case = loaded.predict_case(row)
     assert "undetermined" in case and len(case) == 9
     assert abs(sum(case.values()) - 1.0) < 1e-6
@@ -56,6 +56,6 @@ def test_metrics_are_sane() -> None:
         __import__("tempfile").mkdtemp(), seed=20260711, n_samples=1200,
         params={"iterations": 100, "depth": 4},
     )
-    # recuperación del generador: alta pero es sintético (no clínico)
+    # generator recovery: high, but it is synthetic (not clinical)
     assert 0.0 <= m.leaf_accuracy <= 1.0
     assert m.gate_accuracy > 0.8

@@ -1,8 +1,8 @@
-"""Modelos Pydantic compartidos (features desidentificadas, resultados, AuditEvent).
+"""Shared Pydantic models (de-identified features, results, AuditEvent).
 
-Hoja del grafo `clinibrium.*`: este paquete NO importa nada de otros
-submódulos de `clinibrium`. Cualquier dependencia entre submódulos internos
-de `clinibrium.contracts` es válida.
+Leaf of the `clinibrium.*` graph: this package imports NOTHING from other
+`clinibrium` submodules. Any dependency between internal submodules of
+`clinibrium.contracts` is valid.
 """
 from __future__ import annotations
 

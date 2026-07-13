@@ -1,12 +1,12 @@
 /* ============================================================
-   Clinibrium — sistema de diseño "instrumento clínico documentado"
-   Papel clínico frío + tinta azul + acento petróleo; la tríada de
-   triage (rojo/ámbar/verde) es el único color semántico fuerte.
-   IBM Plex Serif (display) · Plex Sans (UI) · Plex Mono (datos).
+   Clinibrium — "documented clinical instrument" design system
+   Cold clinical paper + blue ink + petrol accent; the triage
+   triad (red/amber/green) is the only strong semantic color.
+   IBM Plex Serif (display) · Plex Sans (UI) · Plex Mono (data).
    ============================================================ */
 
 :root {
-  /* papel y tinta */
+  /* paper and ink */
   --paper: #f5f7f8;
   --surface: #ffffff;
   --surface-2: #edf1f3;
@@ -16,13 +16,13 @@
   --ink-2: #5b6e7d;
   --ink-3: #8296a4;
 
-  /* marca: petróleo clínico */
+  /* brand: clinical petrol */
   --brand: #0b6b70;
   --brand-deep: #084e52;
   --brand-tint: #e4f0f0;
   --brand-line: #b9d8d9;
 
-  /* tríada de triage */
+  /* triage triad */
   --danger: #b42318;
   --danger-bg: #fdecea;
   --danger-line: #f0b4ad;
@@ -35,7 +35,7 @@
   --success-bg: #e9f6ef;
   --success-line: #abdcc3;
 
-  /* tipografía (variables inyectadas por next/font) */
+  /* typography (variables injected by next/font) */
   --sans: var(--font-sans), "IBM Plex Sans", system-ui, sans-serif;
   --serif: var(--font-serif), "IBM Plex Serif", Georgia, serif;
   --mono: var(--font-mono), "IBM Plex Mono", "SF Mono", monospace;
@@ -48,7 +48,7 @@
   --shadow-lg: 0 16px 40px rgba(24, 38, 52, 0.14);
   --transition: 0.18s ease;
 
-  /* papel milimetrado (hero / momentos de instrumento) */
+  /* graph paper (hero / instrument moments) */
   --gridline: rgba(11, 107, 112, 0.07);
 }
 
@@ -90,7 +90,7 @@ code {
   border-radius: 4px;
 }
 
-/* ---------- accesibilidad ---------- */
+/* ---------- accessibility ---------- */
 
 .skip-link {
   position: absolute;
@@ -120,7 +120,7 @@ code {
   }
 }
 
-/* ---------- cabecera global ---------- */
+/* ---------- global header ---------- */
 
 .site-header {
   position: sticky;
@@ -209,7 +209,7 @@ code {
   white-space: nowrap;
 }
 
-/* ---------- pie global ---------- */
+/* ---------- global footer ---------- */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -237,7 +237,7 @@ code {
   max-width: 62ch;
 }
 
-/* ---------- contenedores y cabeceras de página ---------- */
+/* ---------- containers and page headers ---------- */
 
 .container {
   max-width: 1120px;
@@ -281,7 +281,7 @@ code {
   margin: 0;
 }
 
-/* ---------- botones ---------- */
+/* ---------- buttons ---------- */
 
 .btn-primary,
 .btn-secondary,
@@ -424,7 +424,7 @@ code {
   }
 }
 
-/* ---------- chips y avisos ---------- */
+/* ---------- chips and notices ---------- */
 
 .chip {
   display: inline-block;
@@ -593,7 +593,7 @@ code {
   margin: 0 0 2.25rem;
 }
 
-/* --- propiedades verificables --- */
+/* --- verifiable properties --- */
 
 .property-grid {
   display: grid;
@@ -654,7 +654,7 @@ code {
   color: var(--ink-2);
 }
 
-/* --- diagrama del pipeline (timeline vertical) --- */
+/* --- pipeline diagram (vertical timeline) --- */
 
 .rail-diagram {
   list-style: none;
@@ -748,7 +748,7 @@ code {
   max-width: 56ch;
 }
 
-/* --- privacidad --- */
+/* --- privacy --- */
 
 .privacy-grid {
   display: grid;
@@ -790,7 +790,7 @@ code {
   color: var(--ink-2);
 }
 
-/* --- limitaciones honestas --- */
+/* --- honest limitations --- */
 
 .limitations-list {
   list-style: none;
@@ -815,7 +815,7 @@ code {
   font-weight: 600;
 }
 
-/* --- CTA final --- */
+/* --- final CTA --- */
 
 .landing-cta {
   padding: clamp(3.5rem, 7vw, 5.5rem) 0;
@@ -875,7 +875,7 @@ code {
   transform: translateY(-3px);
 }
 
-/* --- tarjetas de caso --- */
+/* --- case cards --- */
 
 .preset-grid {
   display: grid;
@@ -944,7 +944,7 @@ code {
   padding-top: 0.55rem;
 }
 
-/* --- controles de evaluación --- */
+/* --- evaluation controls --- */
 
 .evaluate-controls {
   display: flex;
@@ -1013,7 +1013,7 @@ code {
   font-weight: 500;
 }
 
-/* --- riel del pipeline (visualización SSE) --- */
+/* --- pipeline rail (SSE visualization) --- */
 
 .pipeline-rail {
   list-style: none;
@@ -1040,7 +1040,7 @@ code {
   padding: 0 0.4rem;
 }
 
-/* conector entre nodos */
+/* connector between nodes */
 .rail-stage:not(:first-child)::before {
   content: "";
   position: absolute;
@@ -1072,7 +1072,7 @@ code {
   color: var(--brand-deep);
 }
 
-/* naturaleza de la etapa: la tesis, dibujada */
+/* stage nature: the thesis, drawn */
 .rail-stage-additive .rail-stage-dot {
   border-style: dashed;
 }
@@ -1138,7 +1138,7 @@ code {
   }
 }
 
-/* --- detalle de etapas --- */
+/* --- stage details --- */
 
 .stage-details {
   display: flex;
@@ -1192,7 +1192,7 @@ code {
   color: var(--ink-2);
 }
 
-/* --- banner de seguridad probada --- */
+/* --- proven-safety banner --- */
 
 .safety-banner {
   background: var(--danger-bg);
@@ -1233,7 +1233,7 @@ code {
   gap: 0.4rem;
 }
 
-/* --- fork clínico --- */
+/* --- clinical fork --- */
 
 .fork-section {
   display: flex;
@@ -1350,7 +1350,7 @@ code {
 }
 
 /* ============================================================
-   WHAT WOULD CHANGE MY MIND? (contrafactual determinista)
+   WHAT WOULD CHANGE MY MIND? (deterministic counterfactual)
    ============================================================ */
 
 .wwcm {
@@ -1453,7 +1453,7 @@ code {
 }
 
 /* ============================================================
-   URGENCIA (tríada de triage)
+   URGENCY (triage triad)
    ============================================================ */
 
 .urgency-badge {
@@ -1768,7 +1768,7 @@ code {
 }
 
 /* ============================================================
-   ONBOARDING (tour con spotlight)
+   ONBOARDING (spotlight tour)
    ============================================================ */
 
 .tour-root {
@@ -2224,7 +2224,7 @@ code {
   margin: 0 0 1rem;
 }
 
-/* ---------- responsive fino ---------- */
+/* ---------- fine-grained responsive ---------- */
 
 @media (max-width: 720px) {
   .site-header-inner {

@@ -1,7 +1,7 @@
-"""Persistencia del `AuditEvent`: Postgres si está, JSONL si no.
+"""`AuditEvent` persistence: Postgres if available, JSONL otherwise.
 
-INV-4: NUNCA levanta por fallo de persistencia — loguea y sigue.
-La emisión del evento es invariante; la persistencia es best-effort con fallback.
+INV-4: NEVER raises on persistence failure — logs and continues.
+Emitting the event is an invariant; persistence is best-effort with fallback.
 """
 from __future__ import annotations
 
@@ -72,12 +72,12 @@ def _persist_jsonl(event: AuditEvent, path: str) -> None:
 
 
 async def persist_audit(event: AuditEvent) -> None:
-    """Persiste el `AuditEvent` con degradación automática.
+    """Persists the `AuditEvent` with automatic degradation.
 
-    - Si `DATABASE_URL` está configurado Y la DB es alcanzable → INSERT en
-      `audit_events` (crea la tabla si no existe).
-    - Si no → append inmutable a JSONL (`AUDIT_LOG_PATH`).
-    - NUNCA levanta: loguea y sigue.
+    - If `DATABASE_URL` is configured AND the DB is reachable → INSERT into
+      `audit_events` (creates the table if it does not exist).
+    - Otherwise → immutable append to JSONL (`AUDIT_LOG_PATH`).
+    - NEVER raises: logs and continues.
     """
     settings = get_settings()
     database_url = settings.DATABASE_URL
@@ -88,7 +88,7 @@ async def persist_audit(event: AuditEvent) -> None:
             return
         except Exception:
             logger.warning(
-                "persist_audit: falló Postgres → fallback JSONL (%s)",
+                "persist_audit: Postgres failed → fallback JSONL (%s)",
                 settings.AUDIT_LOG_PATH,
                 exc_info=True,
             )
@@ -97,6 +97,6 @@ async def persist_audit(event: AuditEvent) -> None:
         _persist_jsonl(event, settings.AUDIT_LOG_PATH)
     except Exception:
         logger.exception(
-            "persist_audit: falló también JSONL — evento NO persistido "
-            "(INV-4: 1 AuditEvent YA fue construido; persistencia es best-effort)"
+            "persist_audit: JSONL failed too — event NOT persisted "
+            "(INV-4: 1 AuditEvent was ALREADY built; persistence is best-effort)"
         )

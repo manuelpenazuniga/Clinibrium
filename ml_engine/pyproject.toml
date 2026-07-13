@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ml_engine"
 version = "0.1.0"
-description = "Clinibrium Track B — capa de confianza probabilística agnóstica de dominio (experimental, datos sintéticos). Aislada de A."
+description = "Clinibrium Track B — domain-agnostic probabilistic confidence layer (experimental, synthetic data). Isolated from A."
 requires-python = ">=3.12"
-# Deps ML FIJADAS (Codex: nada de wildcards/>=; lock exacto tras resolver).
-# Este paquete tiene su PROPIO venv; el core `clinibrium` (Track A) NUNCA
-# instala ni ve estas deps (INV-6).
+# PINNED ML deps (Codex: no wildcards/>=; exact lock after resolving).
+# This package has its OWN venv; the `clinibrium` core (Track A) NEVER
+# installs nor sees these deps (INV-6).
 dependencies = [
     "numpy==1.26.4",
     "scipy==1.14.1",
@@ -44,7 +44,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 filterwarnings = [
-    # ruido de deprecación de shap/matplotlib (no es nuestro código)
+    # deprecation noise from shap/matplotlib (not our code)
     "ignore::PendingDeprecationWarning",
     "ignore::DeprecationWarning:shap.*",
 ]

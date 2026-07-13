@@ -1,13 +1,13 @@
-"""Tests del orchestrator + audit + storage — INV-4, INV-6, INV-8, determinismo.
+"""Tests for orchestrator + audit + storage — INV-4, INV-6, INV-8, determinism.
 
-Cubre los criterios de aceptación de la tarea T9a:
-  - INV-4 exactly-1 bajo degradación total (ml + reasoner down)
-  - INV-4 exactly-1 bajo excepción inesperada (rails raise)
-  - INV-1 end-to-end: red flag activa → urgencia inmediata (rieles ganan)
-  - INV-6: ml down no cambia urgencia vs corrida con ml
-  - persist_audit fallback: DATABASE_URL=None → JSONL; DB falla → no rompe
-  - Determinismo: `now` inyectado → AuditEvent.occurred_at estable
-  - Import separation: orchestrator/audit/storage respetan el mapa
+Covers the acceptance criteria of task T9a:
+  - INV-4 exactly-1 under total degradation (ml + reasoner down)
+  - INV-4 exactly-1 under unexpected exception (rails raise)
+  - INV-1 end-to-end: active red flag → immediate urgency (rails win)
+  - INV-6: ml down does not change urgency vs a run with ml
+  - persist_audit fallback: DATABASE_URL=None → JSONL; DB failure → no break
+  - Determinism: injected `now` → stable AuditEvent.occurred_at
+  - Import separation: orchestrator/audit/storage respect the map
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ FIXED_DT = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _bppv_benign() -> CaseFeatures:
-    """BPPV posterior típico: positional, torsional, Dix-Hallpike (+)."""
+    """Typical posterior BPPV: positional, torsional, Dix-Hallpike (+)."""
     return CaseFeatures(
         duration=SymptomDuration.under_1min,
         onset=Onset.sudden,
@@ -72,7 +72,7 @@ def _bppv_benign() -> CaseFeatures:
 
 
 def _red_flag_case() -> CaseFeatures:
-    """AVS central: HINTS anormal + focal signs + edad > 60 + vascular."""
+    """Central AVS: abnormal HINTS + focal signs + age > 60 + vascular."""
     from clinibrium.contracts import FocalSign, VascularRiskFactor
 
     return CaseFeatures(
@@ -98,7 +98,7 @@ def _mock_reasoner_output() -> ReasonerOutput:
 
 
 def _capture_audit(monkeypatch):
-    """Captura cada llamada a emit() del audit engine."""
+    """Captures every call to the audit engine's emit()."""
     events: list[AuditEvent] = []
 
     async def _fake_emit(*args, **kwargs):
@@ -111,7 +111,7 @@ def _capture_audit(monkeypatch):
 
 
 def _capture_audit_module(monkeypatch):
-    """Captura emit() del módulo audit directamente (para tests de persistencia)."""
+    """Captures emit() from the audit module directly (for persistence tests)."""
     events: list[AuditEvent] = []
 
     async def _fake_emit(*args, **kwargs):
@@ -124,12 +124,12 @@ def _capture_audit_module(monkeypatch):
 
 
 # =============================================================================
-# INV-4 — exactly 1 AuditEvent bajo degradación total
+# INV-4 — exactly 1 AuditEvent under total degradation
 # =============================================================================
 
 
 async def test_exactly_one_audit_event_full_degradation(monkeypatch):
-    """ml + reasoner down → 1 AuditEvent con reasoner_status='degraded'."""
+    """ml + reasoner down → 1 AuditEvent with reasoner_status='degraded'."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -145,7 +145,7 @@ async def test_exactly_one_audit_event_full_degradation(monkeypatch):
 
 
 async def test_exactly_one_audit_event_full_degradation_second_call(monkeypatch):
-    """Dos invocaciones → 2 eventos, nunca 0 ni compartido."""
+    """Two invocations → 2 events, never 0 nor shared."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -161,12 +161,12 @@ async def test_exactly_one_audit_event_full_degradation_second_call(monkeypatch)
 
 
 # =============================================================================
-# INV-4 — exactly 1 AuditEvent bajo excepción inesperada
+# INV-4 — exactly 1 AuditEvent under unexpected exception
 # =============================================================================
 
 
 async def test_exactly_one_audit_event_under_unexpected_exception(monkeypatch):
-    """rails.apply_rails raise → 1 AuditEvent con outcome='error', urgency=inmediata."""
+    """rails.apply_rails raises → 1 AuditEvent with outcome='error', urgency=inmediata."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -186,12 +186,12 @@ async def test_exactly_one_audit_event_under_unexpected_exception(monkeypatch):
 
 
 # =============================================================================
-# INV-1 end-to-end — red flag activa gana (rieles sellan urgencia)
+# INV-1 end-to-end — active red flag wins (rails seal the urgency)
 # =============================================================================
 
 
 async def test_inv1_red_flag_wins_over_ml_and_reasoner(monkeypatch):
-    """Red flag activa + ml/reasoner sugiriendo BPPV benigno → urgencia inmediata."""
+    """Active red flag + ml/reasoner suggesting benign BPPV → immediate urgency."""
     mock_reasoner = AsyncMock(return_value=_mock_reasoner_output())
     monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
 
@@ -217,12 +217,12 @@ async def test_inv1_red_flag_wins_over_ml_and_reasoner(monkeypatch):
 
 
 # =============================================================================
-# INV-6 — ml down no cambia urgencia vs corrida con ml
+# INV-6 — ml down does not change urgency vs a run with ml
 # =============================================================================
 
 
 async def test_inv6_ml_down_same_urgency_as_ml_present(monkeypatch):
-    """ml=None vs ml=PredictResponse → misma urgencia (el ML no decide seguridad)."""
+    """ml=None vs ml=PredictResponse → same urgency (ML does not decide safety)."""
     mock_reasoner_output = _mock_reasoner_output()
     monkeypatch.setattr(
         "clinibrium.reasoner.reason", AsyncMock(return_value=mock_reasoner_output)
@@ -260,12 +260,12 @@ async def test_inv6_ml_down_same_urgency_as_ml_present(monkeypatch):
 
 
 # =============================================================================
-# INV-8 — reasoner down: pipeline completa con razón marcada degraded
+# INV-8 — reasoner down: pipeline completes with reasoning marked degraded
 # =============================================================================
 
 
 async def test_reasoner_degraded_marks_reasoner_status(monkeypatch):
-    """reasoner down → reasoner_status='degraded', pipeline completa."""
+    """reasoner down → reasoner_status='degraded', pipeline completes."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -279,12 +279,12 @@ async def test_reasoner_degraded_marks_reasoner_status(monkeypatch):
 
 
 # =============================================================================
-# persist_audit — fallback JSONL + DB failure no rompe
+# persist_audit — JSONL fallback + DB failure does not break
 # =============================================================================
 
 
 def test_persist_audit_fallback_jsonl(monkeypatch, tmp_path):
-    """DATABASE_URL=None → escribe 1 línea al JSONL."""
+    """DATABASE_URL=None → writes 1 line to the JSONL."""
     import asyncio
 
     jsonl = tmp_path / "audit.jsonl"
@@ -316,7 +316,7 @@ def test_persist_audit_fallback_jsonl(monkeypatch, tmp_path):
 
 
 def test_persist_audit_db_failure_does_not_break_pipeline(monkeypatch, tmp_path):
-    """DB falla → no rompe el pipeline, evento igual emitido."""
+    """DB failure → does not break the pipeline, the event is still emitted."""
     import asyncio
 
     jsonl = tmp_path / "audit_fallback.jsonl"
@@ -348,12 +348,12 @@ def test_persist_audit_db_failure_does_not_break_pipeline(monkeypatch, tmp_path)
 
 
 # =============================================================================
-# Determinismo — now inyectado → AuditEvent.occurred_at estable
+# Determinism — injected now → stable AuditEvent.occurred_at
 # =============================================================================
 
 
 async def test_occurred_at_stable_with_injected_now(monkeypatch):
-    """now=datetime(2026,7,10) → AuditEvent.occurred_at == ese datetime."""
+    """now=datetime(2026,7,10) → AuditEvent.occurred_at == that datetime."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -368,12 +368,12 @@ async def test_occurred_at_stable_with_injected_now(monkeypatch):
 
 
 # =============================================================================
-# build_audit_event — pure, determinista
+# build_audit_event — pure, deterministic
 # =============================================================================
 
 
 def test_build_audit_event_is_pure_and_deterministic():
-    """Mismos inputs → mismo hash, mismo actor, sin side-effects."""
+    """Same inputs → same hash, same actor, no side effects."""
     features = _bppv_benign()
     result = PipelineResult(
         case_id="case-test",
@@ -397,12 +397,12 @@ def test_build_audit_event_is_pure_and_deterministic():
 
     assert e1.input_features_hash == e2.input_features_hash
     assert e1.actor == e2.actor
-    assert e1.id != e2.id  # UUIDs son únicos
+    assert e1.id != e2.id  # UUIDs are unique
     assert e1.occurred_at == FIXED_DT
 
 
 def test_features_hash_deterministic():
-    """Mismas CaseFeatures → mismo hash, distinto de otro caso."""
+    """Same CaseFeatures → same hash, different from another case."""
     from clinibrium.audit.engine import _features_hash
 
     h1 = _features_hash(_bppv_benign())
@@ -415,12 +415,12 @@ def test_features_hash_deterministic():
 
 
 # =============================================================================
-# Import separation — respetar el mapa (no imports prohibidos)
+# Import separation — respect the map (no forbidden imports)
 # =============================================================================
 
 
 def _iter_clinibrium_imports(py_file: Path) -> list[tuple[int, str]]:
-    """Devuelve (line_no, module) de cada import de `clinibrium.*` encontrado."""
+    """Returns (line_no, module) for every `clinibrium.*` import found."""
     tree = ast.parse(py_file.read_text(encoding="utf-8"))
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -434,7 +434,7 @@ def _iter_clinibrium_imports(py_file: Path) -> list[tuple[int, str]]:
 
 
 def test_orchestrator_not_imported_by_engines_reasoner_rails():
-    """PROHIBIDO: engines / reasoner / rails importan orchestrator."""
+    """FORBIDDEN: engines / reasoner / rails importing orchestrator."""
     pkg_root = Path(__file__).resolve().parents[1] / "clinibrium"
     offenders: list[str] = []
     for mod_name in ["redflag_engine", "differential_engine", "reasoner", "rails"]:
@@ -446,7 +446,7 @@ def test_orchestrator_not_imported_by_engines_reasoner_rails():
                 if "orchestrator" in mod:
                     offenders.append(f"{mod_name}/{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "INV-5 violada — engines/reasoner/rails importan orchestrator:\n  "
+        "INV-5 violated — engines/reasoner/rails import orchestrator:\n  "
         + "\n  ".join(offenders)
     )
 
@@ -462,7 +462,7 @@ def test_audit_imports_respect_map():
                 if mod == f"clinibrium.{f}" or mod.startswith(f"clinibrium.{f}."):
                     offenders.append(f"audit/{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "audit importa módulos prohibidos:\n  " + "\n  ".join(offenders)
+        "audit imports forbidden modules:\n  " + "\n  ".join(offenders)
     )
 
 
@@ -477,12 +477,12 @@ def test_storage_imports_respect_map():
                 if mod == f"clinibrium.{f}" or mod.startswith(f"clinibrium.{f}."):
                     offenders.append(f"storage/{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "storage importa módulos prohibidos:\n  " + "\n  ".join(offenders)
+        "storage imports forbidden modules:\n  " + "\n  ".join(offenders)
     )
 
 
 def test_orchestrator_can_import_all_engines():
-    """orchestrator es el único que compone — debe importar todo aguas abajo."""
+    """orchestrator is the only composer — it must import everything downstream."""
     pkg_root = Path(__file__).resolve().parents[1] / "clinibrium" / "orchestrator"
     all_imports: set[str] = set()
     for py in sorted(pkg_root.glob("*.py")):
@@ -495,16 +495,16 @@ def test_orchestrator_can_import_all_engines():
             if f"clinibrium.{req}" in mod or mod.endswith(f".{req}"):
                 found.add(req)
     missing = required - found
-    assert not missing, f"orchestrator no importa módulos requeridos: {missing}"
+    assert not missing, f"orchestrator does not import required modules: {missing}"
 
 
 # =============================================================================
-# CaseFeatures → AuditEvent: sin PII en el hash (negativo)
+# CaseFeatures → AuditEvent: no PII in the hash (negative)
 # =============================================================================
 
 
 def test_features_hash_contains_no_pii():
-    """El hash de features es sobre campos desidentificados (NO patient_name, etc)."""
+    """The features hash is over de-identified fields (NO patient_name, etc)."""
     from clinibrium.audit.engine import _features_hash
 
     features = _bppv_benign()
@@ -516,12 +516,12 @@ def test_features_hash_contains_no_pii():
 
 
 # =============================================================================
-# JSONL inmutable (append-only) — verificación de append
+# Immutable JSONL (append-only) — append verification
 # =============================================================================
 
 
 def test_jsonl_append_only(monkeypatch, tmp_path):
-    """Dos eventos → dos líneas JSONL (append, no rewrite)."""
+    """Two events → two JSONL lines (append, not rewrite)."""
     import asyncio
 
     jsonl = tmp_path / "audit_append.jsonl"
@@ -557,12 +557,12 @@ def test_jsonl_append_only(monkeypatch, tmp_path):
 
 
 # =============================================================================
-# AuditEvent frozen — no se puede mutar después de build
+# AuditEvent frozen — cannot be mutated after build
 # =============================================================================
 
 
 def test_audit_event_frozen_from_build():
-    """build_audit_event produce un AuditEvent inmutable (frozen)."""
+    """build_audit_event produces an immutable (frozen) AuditEvent."""
     features = _bppv_benign()
     result = PipelineResult(
         case_id="case-frozen",
@@ -580,15 +580,15 @@ def test_audit_event_frozen_from_build():
 
 
 async def test_exactly_one_audit_event_when_exception_after_emit(monkeypatch):
-    """INV-4 (fix auditoría Gemini): si algo falla DESPUÉS del emit exitoso
-    del paso 8 (p.ej. model_copy), el flag `audited` previene un SEGUNDO
-    AuditEvent de error. Debe quedar exactamente 1 (el exitoso)."""
+    """INV-4 (Gemini audit fix): if something fails AFTER the successful
+    emit of step 8 (e.g. model_copy), the `audited` flag prevents a SECOND
+    error AuditEvent. Exactly 1 must remain (the successful one)."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
     events = _capture_audit(monkeypatch)
 
-    # model_copy selectivo: revienta SOLO en la llamada post-emit (la que trae
-    # audit_event_id en el update); deja pasar cualquier otro model_copy.
+    # Selective model_copy: blows up ONLY on the post-emit call (the one
+    # carrying audit_event_id in the update); lets any other model_copy through.
     real_model_copy = PipelineResult.model_copy
 
     def _selective_boom(self, *args, update=None, **kwargs):  # type: ignore[no-untyped-def]
@@ -601,18 +601,18 @@ async def test_exactly_one_audit_event_when_exception_after_emit(monkeypatch):
     with pytest.raises(RuntimeError, match="post-emit boom"):
         await evaluate(_bppv_benign(), grounding=InlineGrounding(), now=FIXED_DT)
 
-    # Exactamente 1 AuditEvent (el exitoso "evaluation"), NO un 2º de error.
+    # Exactly 1 AuditEvent (the successful "evaluation"), NOT a 2nd error one.
     assert len(events) == 1
     assert events[0].outcome == "evaluation"
 
 
 # =============================================================================
-# Kill-Claude toggle (kill_reasoner, INV-8 intencional)
+# Kill-Claude toggle (kill_reasoner, intentional INV-8)
 # =============================================================================
 
 
 async def test_kill_reasoner_yields_reasoning_none(monkeypatch):
-    """kill_reasoner=True → reasoning=None, reasoner.reason NUNCA llamado."""
+    """kill_reasoner=True → reasoning=None, reasoner.reason NEVER called."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     mock_reasoner = AsyncMock()
     monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
@@ -632,7 +632,7 @@ async def test_kill_reasoner_yields_reasoning_none(monkeypatch):
 
 
 async def test_kill_reasoner_same_urgency_as_without_kill(monkeypatch):
-    """kill_reasoner=True → misma urgencia que sin kill (INV-8 no toca seguridad)."""
+    """kill_reasoner=True → same urgency as without kill (INV-8 does not touch safety)."""
     mock_reasoner_output = _mock_reasoner_output()
     monkeypatch.setattr(
         "clinibrium.reasoner.reason", AsyncMock(return_value=mock_reasoner_output)
@@ -665,7 +665,7 @@ async def test_kill_reasoner_same_urgency_as_without_kill(monkeypatch):
 
 
 async def test_kill_reasoner_exactly_one_audit_event(monkeypatch):
-    """kill_reasoner=True → exactamente 1 AuditEvent (INV-4 intacto)."""
+    """kill_reasoner=True → exactly 1 AuditEvent (INV-4 intact)."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
@@ -684,7 +684,7 @@ async def test_kill_reasoner_exactly_one_audit_event(monkeypatch):
 
 
 async def test_kill_reasoner_red_flag_case_urgency_unchanged(monkeypatch):
-    """kill_reasoner=True con red flag activa → urgencia inmediata (no baja)."""
+    """kill_reasoner=True with an active red flag → immediate urgency (no downgrade)."""
     mock_reasoner_output = _mock_reasoner_output()
     monkeypatch.setattr(
         "clinibrium.reasoner.reason", AsyncMock(return_value=mock_reasoner_output)
@@ -706,13 +706,13 @@ async def test_kill_reasoner_red_flag_case_urgency_unchanged(monkeypatch):
 
 
 # =============================================================================
-# T-CLIN r1 — hipoacusia súbita: A8 (con AVS) urgente vs B1 (aislada) prioritaria
+# T-CLIN r1 — sudden hearing loss: A8 (with AVS) urgent vs B1 (isolated) priority
 # =============================================================================
 
 
 async def test_isolated_sudden_hearing_loss_is_prioritaria(monkeypatch):
-    """T-CLIN r1: hipoacusia neurosensorial súbita AISLADA → PRIORITARIA
-    (ORL 48h), NO inmediata. B1 aporta ESCALAR; no activa red_flag_activa."""
+    """T-CLIN r1: ISOLATED sudden sensorineural hearing loss → PRIORITY
+    (ENT 48h), NOT immediate. B1 contributes ESCALAR; does not set red_flag_activa."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     f = CaseFeatures(hearing_loss=HearingLoss.sudden_unilateral)
     result = await evaluate(
@@ -724,8 +724,8 @@ async def test_isolated_sudden_hearing_loss_is_prioritaria(monkeypatch):
 
 
 async def test_sudden_hearing_loss_with_avs_is_inmediata(monkeypatch):
-    """Hipoacusia súbita + vértigo agudo (AVS) → A8 (AICA) → INMEDIATA.
-    Prueba de seguridad del cambio B1: no debe de-escalar el caso con AVS."""
+    """Sudden hearing loss + acute vertigo (AVS) → A8 (AICA) → IMMEDIATE.
+    Safety test for the B1 change: it must not de-escalate the AVS case."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     f = CaseFeatures(
         hearing_loss=HearingLoss.sudden_unilateral,

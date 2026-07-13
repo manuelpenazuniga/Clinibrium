@@ -1,17 +1,17 @@
-"""Pipeline de evaluación VertigoDx — compone todos los módulos.
+"""VertigoDx evaluation pipeline — composes all modules.
 
-Es el ÚNICO módulo que conoce el grafo completo:
+It is the ONLY module that knows the full graph:
     orchestrator → engines + reasoner + rails + ml_client + audit + grounding + contracts
 
-INV-4: exactamente 1 AuditEvent por invocación, incluso bajo fallo parcial
-(ml-down + reasoner-down) o excepción inesperada. El flag `audited`
-garantiza que nunca se emitan 0 ni 2 eventos.
+INV-4: exactly 1 AuditEvent per invocation, even under partial failure
+(ml-down + reasoner-down) or unexpected exception. The `audited` flag
+guarantees that neither 0 nor 2 events are ever emitted.
 
-INV-6 / INV-8: ml_client y reasoner degradan a None sin romper el pipeline.
-La seguridad (urgencia / red_flag / forced_actions) la sellan capas
-deterministas (RedFlagEngine + rails).
+INV-6 / INV-8: ml_client and reasoner degrade to None without breaking the
+pipeline. Safety (urgency / red_flag / forced_actions) is sealed by the
+deterministic layers (RedFlagEngine + rails).
 
-INV-5: PROHIBIDO que orchestrator sea importado por engines / reasoner / rails.
+INV-5: importing orchestrator from engines / reasoner / rails is FORBIDDEN.
 """
 from __future__ import annotations
 
@@ -37,10 +37,10 @@ from clinibrium.redflag_engine import evaluate as redflag_evaluate
 logger = logging.getLogger(__name__)
 
 StageHook = Callable[[str, Any], Awaitable[None]]
-"""Hook observacional: recibe (stage_name, payload) tras cada paso del pipeline.
-El LLM/cliente NUNCA debe fijar urgencia vinculante — esto es puramente
-observacional (AD-6 / regla dura 2). Un fallo del hook se loguea y NO
-rompe el pipeline ni afecta INV-4."""
+"""Observational hook: receives (stage_name, payload) after each pipeline step.
+The LLM/client must NEVER set binding urgency — this is purely observational
+(AD-6 / hard rule 2). A hook failure is logged and does NOT break the
+pipeline or affect INV-4."""
 
 
 async def _notify(
@@ -48,10 +48,10 @@ async def _notify(
     stage: str,
     payload: Any,
 ) -> None:
-    """Invoca el hook observacional con guarda fail-safe.
+    """Invokes the observational hook with a fail-safe guard.
 
-    Si el hook es None, no hace nada. Si el hook levanta, SOLO loguea —
-    nunca propaga (un fallo del observador no debe afectar el pipeline).
+    If the hook is None, does nothing. If the hook raises, ONLY logs —
+    never propagates (an observer failure must not affect the pipeline).
     """
     if on_stage is None:
         return
@@ -59,7 +59,7 @@ async def _notify(
         await on_stage(stage, payload)
     except Exception:
         logger.exception(
-            "on_stage hook failed (stage=%s) — pipeline continúa sin observabilidad",
+            "on_stage hook failed (stage=%s) — pipeline continues without observability",
             stage,
         )
 
@@ -107,29 +107,29 @@ async def evaluate(
     on_stage: StageHook | None = None,
     kill_reasoner: bool = False,
 ) -> PipelineResult:
-    """Evalúa un caso clínico completo — pipeline end-to-end de VertigoDx.
+    """Evaluates a complete clinical case — end-to-end VertigoDx pipeline.
 
     Args:
-        features: CaseFeatures desidentificadas del caso.
-        recording_mode: si True, fuerza Opus en el razonador (calidad > costo).
-        grounding: implementación de Grounding inyectable (tests); si None,
-                   usa `get_grounding()`.
-        now: timestamp inyectable para `AuditEvent.occurred_at` (tests determinísticos).
-        on_stage: hook observacional opcional, invocado tras cada paso del
-            pipeline con (stage_name, payload). PURAMENTE OBSERVACIONAL:
-            un fallo del hook se loguea y NO afecta el resultado, urgencia
-            ni auditoría. Si es None, el pipeline se comporta idéntico a
-            versiones anteriores (INV-4 / tests existentes sin cambios).
-        kill_reasoner: si True, fuerza reasoning=None y reasoner_status="degraded"
-            (INV-8 intencional). NO afecta urgencia, red flags, forced_actions
-            ni el guard INV-4. Es la degradación INV-8 que ya existe, activada
-            a propósito (debug/demo).
+        features: de-identified CaseFeatures of the case.
+        recording_mode: if True, forces Opus in the reasoner (quality > cost).
+        grounding: injectable Grounding implementation (tests); if None,
+                   uses `get_grounding()`.
+        now: injectable timestamp for `AuditEvent.occurred_at` (deterministic tests).
+        on_stage: optional observational hook, invoked after each pipeline
+            step with (stage_name, payload). PURELY OBSERVATIONAL: a hook
+            failure is logged and does NOT affect the result, urgency or
+            audit. If None, the pipeline behaves identically to previous
+            versions (INV-4 / existing tests unchanged).
+        kill_reasoner: if True, forces reasoning=None and reasoner_status="degraded"
+            (intentional INV-8). Does NOT affect urgency, red flags, forced_actions
+            or the INV-4 guard. It is the already-existing INV-8 degradation,
+            triggered on purpose (debug/demo).
 
     Returns:
-        PipelineResult sellado (post-rails) con audit_event_id poblado.
+        Sealed PipelineResult (post-rails) with audit_event_id populated.
 
-    INV-4 garantía: exactamente 1 AuditEvent emitido. Si un paso intermedio
-    falla, se emite un AuditEvent de error y se re-lanza la excepción.
+    INV-4 guarantee: exactly 1 AuditEvent emitted. If an intermediate step
+    fails, an error AuditEvent is emitted and the exception is re-raised.
     """
     occurred_at = now if now is not None else datetime.now(timezone.utc)
     reasoner_status = "degraded"
@@ -137,23 +137,23 @@ async def evaluate(
     result: PipelineResult | None = None
 
     try:
-        # ── Paso 1: RedFlagEngine (determinista, separado) ──────────────────
+        # ── Step 1: RedFlagEngine (deterministic, separate) ─────────────────
         red_flag = redflag_evaluate(features)
         await _notify(on_stage, "redflag", _redflag_payload(red_flag))
 
-        # ── Paso 2: DifferentialEngine (reglas ICVD) ───────────────────────
+        # ── Step 2: DifferentialEngine (ICVD rules) ────────────────────────
         differential = differential_evaluate(features)
         await _notify(on_stage, "differential", _differential_payload(differential))
 
-        # ── Paso 3: ML opcional (track B) — None si B down (INV-6) ─────────
+        # ── Step 3: optional ML (track B) — None if B is down (INV-6) ──────
         ml = await _ml_client.predict(features)
         await _notify(on_stage, "ml", _ml_payload(ml))
 
-        # ── Paso 4: Grounding retrieval (AD-12) ─────────────────────────────
+        # ── Step 4: Grounding retrieval (AD-12) ─────────────────────────────
         _grounding = grounding if grounding is not None else get_grounding()
         chunks = _grounding.retrieve(differential, features, k=4)
 
-        # ── Paso 5: Razonador Claude — None si down (INV-8) o kill_reasoner ──
+        # ── Step 5: Claude reasoner — None if down (INV-8) or kill_reasoner ──
         if kill_reasoner:
             reasoning = None
         else:
@@ -169,7 +169,7 @@ async def evaluate(
             reasoner_status = "ok"
         await _notify(on_stage, "reasoning", _reasoning_payload(reasoning))
 
-        # ── Paso 6: Ensamblar PipelineResult preliminar ────────────────────
+        # ── Step 6: Assemble preliminary PipelineResult ────────────────────
         case_id = _derive_case_id(features)
         result = PipelineResult(
             case_id=case_id,
@@ -182,11 +182,11 @@ async def evaluate(
             applied_rails=[],
         )
 
-        # ── Paso 7: Rieles — urgencia / forced_actions finales (GANAN) ────
+        # ── Step 7: Rails — final urgency / forced_actions (THEY WIN) ─────
         sealed = _rails.apply_rails(result, features)
         await _notify(on_stage, "rails", _rails_payload(sealed))
 
-        # ── Paso 8: Emitir AuditEvent ──────────────────────────────────────
+        # ── Step 8: Emit AuditEvent ────────────────────────────────────────
         event = await _audit_engine.emit(
             sealed,
             features,
@@ -194,9 +194,9 @@ async def evaluate(
             outcome="evaluation",
             occurred_at=occurred_at,
         )
-        # INV-4: el AuditEvent YA se emitió. Marcá `audited` ANTES de cualquier
-        # otra operación (model_copy) para que un fallo posterior NO gatille un
-        # segundo emit en el except (evita el doble-AuditEvent).
+        # INV-4: the AuditEvent has ALREADY been emitted. Set `audited` BEFORE
+        # any other operation (model_copy) so that a later failure does NOT
+        # trigger a second emit in the except block (avoids the double AuditEvent).
         audited = True
         sealed = sealed.model_copy(
             update={"audit_event_id": event.id, "audit_event": event}
@@ -204,7 +204,7 @@ async def evaluate(
         return sealed
 
     except Exception:
-        # ── Guard INV-4: emitir 1 AuditEvent fail-safe y re-lanzar ─────────
+        # ── INV-4 guard: emit 1 fail-safe AuditEvent and re-raise ──────────
         if not audited:
             try:
                 await _emit_error_event(
@@ -215,8 +215,8 @@ async def evaluate(
                 )
             except Exception:
                 logger.exception(
-                    "INV-4 guard: no se pudo emitir AuditEvent de error — "
-                    "el pipeline falló sin trazabilidad de auditoría"
+                    "INV-4 guard: could not emit error AuditEvent — "
+                    "the pipeline failed without audit traceability"
                 )
         raise
 
@@ -228,10 +228,10 @@ async def _emit_error_event(
     reasoner_status: str,
     occurred_at: datetime,
 ) -> None:
-    """Emite un AuditEvent fail-safe cuando el pipeline falla.
+    """Emits a fail-safe AuditEvent when the pipeline fails.
 
-    Si el sistema falla, se trata como urgencia inmediata (revisión humana
-    forzada). `red_flag_activa` = lo que se haya calculado o False.
+    If the system fails, it is treated as immediate urgency (forced human
+    review). `red_flag_activa` = whatever was computed, or False.
     """
     urgency = Urgency.inmediata
 
@@ -259,9 +259,9 @@ async def _emit_error_event(
 
 
 def _derive_case_id(features: CaseFeatures) -> str:
-    """Deriva un case_id determinista del hash de features.
+    """Derives a deterministic case_id from the features hash.
 
-    Sin PII: las features ya son desidentificadas por construcción.
+    No PII: the features are already de-identified by construction.
     """
     import hashlib
     import json

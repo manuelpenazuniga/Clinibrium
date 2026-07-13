@@ -55,8 +55,8 @@ export function calculateVelocity(
   videoWidth: number,
   videoHeight: number
 ): Velocity {
-  // dt <= 0 (frame repetido o timestamp no monótono) → sin división:
-  // devolvemos velocidad nula en vez de un valor con signo invertido.
+  // dt <= 0 (repeated frame or non-monotonic timestamp) → no division:
+  // return zero velocity instead of a sign-flipped value.
   if (!prevPos || dt <= 0) return { vx: 0, vy: 0 };
   const dx = (currentPos.x - prevPos.x) * videoWidth;
   const dy = (currentPos.y - prevPos.y) * videoHeight;

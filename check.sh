@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate de Clinibrium. Sale 0 en verde.
+# Clinibrium gate. Exits 0 on green.
 # Backend: ruff + mypy + pytest. Frontend: typecheck + lint + build.
 set -euo pipefail
 
@@ -25,7 +25,7 @@ fi
 source .venv/bin/activate
 python -m pip install --upgrade pip >/dev/null
 pip install -e ".[dev]" >/dev/null
-ok "venv listo, deps instaladas"
+ok "venv ready, deps installed"
 
 step "backend: ruff check"
 ruff check clinibrium
@@ -45,7 +45,7 @@ cd "$REPO_ROOT/frontend"
 if [[ ! -d "node_modules" ]]; then
   npm install --no-audit --no-fund --silent
 fi
-ok "node_modules listo"
+ok "node_modules ready"
 
 step "frontend: typecheck"
 npm run -s typecheck
@@ -66,9 +66,9 @@ ok "next build"
 # ---------- DOCKER COMPOSE VALIDATION ----------
 step "docker-compose config"
 if command -v docker >/dev/null 2>&1; then
-  (cd "$REPO_ROOT" && docker compose config -q) && ok "docker compose config válido"
+  (cd "$REPO_ROOT" && docker compose config -q) && ok "docker compose config valid"
 else
-  echo "  skip: docker no disponible"
+  echo "  skip: docker not available"
 fi
 
 step "GATE OK"

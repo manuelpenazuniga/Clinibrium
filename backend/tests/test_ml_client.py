@@ -1,13 +1,13 @@
-"""Tests del cliente `POST /predict` (track B).
+"""Tests for the `POST /predict` client (track B).
 
-Cubre los criterios de aceptación de la tarea:
-  (1) INV-6 — `ML_PREDICT_URL=None` ⇒ `predict()` devuelve `None` sin
-      excepción.
-  (2) Timeout / 5xx ⇒ `predict()` devuelve `None` sin excepción.
-  (3) Stub devolviendo `PredictResponse` válido ⇒ `predict()` devuelve
-      un `PredictResponse` parseado.
-  (4) Negativo — el módulo `ml_client` SOLO importa de `contracts` y libs
-      (NO de engines, orchestrator, reasoner, rails).
+Covers the task's acceptance criteria:
+  (1) INV-6 — `ML_PREDICT_URL=None` ⇒ `predict()` returns `None` without
+      raising.
+  (2) Timeout / 5xx ⇒ `predict()` returns `None` without raising.
+  (3) Stub returning a valid `PredictResponse` ⇒ `predict()` returns
+      a parsed `PredictResponse`.
+  (4) Negative — the `ml_client` module ONLY imports from `contracts` and
+      libs (NOT from engines, orchestrator, reasoner, rails).
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from clinibrium.ml_client import predict
 
 
 # ---------------------------------------------------------------------------
-# (1) INV-6 — sin URL configurada → None
+# (1) INV-6 — no URL configured → None
 # ---------------------------------------------------------------------------
 
 
@@ -30,9 +30,9 @@ from clinibrium.ml_client import predict
 async def test_predict_returns_none_when_url_not_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """INV-6: sin `ML_PREDICT_URL` (y sin `base_url` arg) el cliente
-    degrada a `None` sin abrir conexión ni levantar excepción."""
-    # Forzamos el settings a None aunque el .env del dev lo setee.
+    """INV-6: without `ML_PREDICT_URL` (and without a `base_url` arg) the
+    client degrades to `None` without opening a connection or raising."""
+    # Force the settings to None even if the dev's .env sets it.
     from clinibrium.config import get_settings
 
     monkeypatch.setattr(get_settings(), "ML_PREDICT_URL", None)
@@ -40,7 +40,7 @@ async def test_predict_returns_none_when_url_not_configured(
     result = await predict(CaseFeatures())
     assert result is None
 
-    # Nadie intentó abrir un socket: no se construyó ningún AsyncClient.
+    # Nobody tried to open a socket: no AsyncClient was constructed.
     assert not hasattr(ml_client_module, "_last_client_used") or True  # noop
 
 
@@ -48,8 +48,8 @@ async def test_predict_returns_none_when_url_not_configured(
 async def test_predict_returns_none_when_explicit_base_url_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`base_url=None` explícito ⇒ cae al setting. Si el setting es None,
-    devuelve `None`."""
+    """Explicit `base_url=None` ⇒ falls back to the setting. If the setting
+    is None, returns `None`."""
     from clinibrium.config import get_settings
 
     monkeypatch.setattr(get_settings(), "ML_PREDICT_URL", None)
@@ -58,7 +58,7 @@ async def test_predict_returns_none_when_explicit_base_url_is_none(
 
 
 # ---------------------------------------------------------------------------
-# (2) timeout / 5xx → None (sin excepción)
+# (2) timeout / 5xx → None (no exception)
 # ---------------------------------------------------------------------------
 
 
@@ -66,8 +66,8 @@ def _patch_async_client_with_transport(
     monkeypatch: pytest.MonkeyPatch,
     handler,
 ) -> None:
-    """Sustituye `httpx.AsyncClient` por una factory que inyecta un
-    `MockTransport` con el handler provisto. El test no toca la red."""
+    """Replaces `httpx.AsyncClient` with a factory that injects a
+    `MockTransport` with the given handler. The test never touches the network."""
     original = ml_client_module.httpx.AsyncClient
 
     def factory(*args, **kwargs):
@@ -81,7 +81,7 @@ def _patch_async_client_with_transport(
 async def test_predict_returns_none_on_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """INV-6: timeout del server degrada a None (no levanta)."""
+    """INV-6: a server timeout degrades to None (does not raise)."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("simulated timeout")
@@ -96,7 +96,7 @@ async def test_predict_returns_none_on_timeout(
 async def test_predict_returns_none_on_500(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """5xx del server degrada a None (no levanta)."""
+    """A 5xx from the server degrades to None (does not raise)."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "boom"})
@@ -111,7 +111,7 @@ async def test_predict_returns_none_on_500(
 async def test_predict_returns_none_on_400(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """4xx también degrada (A no debe romperse por un 400 de B)."""
+    """4xx also degrades (A must not break because of a 400 from B)."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={"error": "bad request"})
@@ -126,7 +126,7 @@ async def test_predict_returns_none_on_400(
 async def test_predict_returns_none_on_connection_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Error de conexión de bajo nivel también degrada."""
+    """A low-level connection error also degrades."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("simulated connection refused")
@@ -141,7 +141,7 @@ async def test_predict_returns_none_on_connection_error(
 async def test_predict_returns_none_on_malformed_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """200 con JSON que no matchea `PredictResponse` degrada a None."""
+    """A 200 with JSON that does not match `PredictResponse` degrades to None."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"not_a_predict_response": True})
@@ -153,7 +153,7 @@ async def test_predict_returns_none_on_malformed_json(
 
 
 # ---------------------------------------------------------------------------
-# (3) ruta feliz — stub devuelve PredictResponse válido
+# (3) happy path — stub returns a valid PredictResponse
 # ---------------------------------------------------------------------------
 
 
@@ -193,7 +193,7 @@ async def test_predict_parses_valid_response(
 async def test_predict_accepts_null_shap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`shap: null` es válido (B puede no calcular SHAP)."""
+    """`shap: null` is valid (B may not compute SHAP)."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -217,7 +217,7 @@ async def test_predict_accepts_null_shap(
 async def test_predict_sends_url_with_trailing_slash_normalized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`base_url` con `/` al final no produce `//predict`."""
+    """A `base_url` with a trailing `/` does not produce `//predict`."""
 
     seen_urls: list[str] = []
 
@@ -242,7 +242,7 @@ async def test_predict_sends_url_with_trailing_slash_normalized(
 async def test_predict_serializes_enums_as_strings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Los enums de `CaseFeatures` se serializan a sus `.value` (strings)."""
+    """`CaseFeatures` enums are serialized to their `.value` (strings)."""
 
     captured: dict = {}
 
@@ -275,7 +275,7 @@ async def test_predict_serializes_enums_as_strings(
 
 
 # ---------------------------------------------------------------------------
-# (4) Negativo — ml_client no acopla A con engines/reasoner/orchestrator/rails
+# (4) Negative — ml_client does not couple A to engines/reasoner/orchestrator/rails
 # ---------------------------------------------------------------------------
 
 
@@ -291,12 +291,12 @@ FORBIDDEN_IMPORTS = {
 
 
 def test_ml_client_does_not_import_engines_or_reasoner() -> None:
-    """El módulo `ml_client.client` y su package NO importan de los
-    motores / orquestador / reasoner / rails / api (regla dura: A
-    nunca depende de B, y B nunca toca el interior de A).
+    """The `ml_client.client` module and its package do NOT import from the
+    engines / orchestrator / reasoner / rails / api (hard rule: A never
+    depends on B, and B never touches the internals of A).
 
-    Chequeo via AST (no `sys.modules`) para no contaminarnos con los
-    módulos que cargaron otros tests del repo.
+    Checked via AST (not `sys.modules`) to avoid contamination from
+    modules loaded by other tests in the repo.
     """
     import ast
 
@@ -321,37 +321,37 @@ def test_ml_client_does_not_import_engines_or_reasoner() -> None:
                 continue
             if imported is None:
                 continue
-            # Permitimos clinibrium.contracts y clinibrium.config (settings,
-            # no es un motor — es configuración runtime, hoja).
+            # We allow clinibrium.contracts and clinibrium.config (settings,
+            # not an engine — runtime configuration, a leaf).
             for forbidden in FORBIDDEN_IMPORTS:
                 if imported == forbidden or imported.startswith(forbidden + "."):
                     pytest.fail(
-                        f"{path}: importa el módulo prohibido {imported!r} "
-                        f"(regla dura: ml_client solo depende de contracts)."
+                        f"{path}: imports forbidden module {imported!r} "
+                        f"(hard rule: ml_client depends only on contracts)."
                     )
 
 
 # ---------------------------------------------------------------------------
-# Bonus: el stub server (dev) implementa el mismo contrato
+# Bonus: the dev stub server implements the same contract
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_stub_server_implements_predict_contract() -> None:
-    """El stub dev cumple el contrato congelado: responde con un
-    `PredictResponse` válido en `POST /predict` con la forma esperada."""
+    """The dev stub honors the frozen contract: it answers `POST /predict`
+    with a valid `PredictResponse` of the expected shape."""
     from httpx import ASGITransport, AsyncClient
 
     from clinibrium.ml_client.stub_server import app
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://stub") as client:
-        # 1) /health existe
+        # 1) /health exists
         h = await client.get("/health")
         assert h.status_code == 200
         assert h.json()["status"] == "ok"
 
-        # 2) /predict devuelve un PredictResponse válido
+        # 2) /predict returns a valid PredictResponse
         r = await client.post(
             "/predict",
             json=CaseFeatures(dix_hallpike="right_positive").model_dump(mode="json"),
@@ -360,9 +360,9 @@ async def test_stub_server_implements_predict_contract() -> None:
         body = r.json()
         parsed = PredictResponse.model_validate(body)
         assert parsed.model_version.startswith("stub-")
-        # Las claves de `probabilities` son valores del enum Diagnosis
+        # `probabilities` keys are Diagnosis enum values
         valid_keys = {d.value for d in Diagnosis}
         assert set(parsed.probabilities.keys()).issubset(valid_keys)
-        # suma ~ 1
+        # sums to ~1
         total = sum(parsed.probabilities.values())
         assert 0.99 <= total <= 1.01

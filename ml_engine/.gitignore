@@ -5,5 +5,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 build/
-# artefactos de modelo entrenado: se regeneran con `python -m ml_engine.train`
+# trained model artifacts: regenerated with `python -m ml_engine.train`
 ml_engine/artifacts/model/

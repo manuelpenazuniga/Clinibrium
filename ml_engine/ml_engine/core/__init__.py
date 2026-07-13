@@ -1,5 +1,5 @@
-"""Core dominio-AGNÓSTICO de la capa ML (la plataforma).
+"""Domain-AGNOSTIC core of the ML layer (the platform).
 
-PROHIBIDO importar ``clinibrium.*`` y PROHIBIDO importar ``ml_engine.domains.*``
-(el core no conoce ningún dominio; los dominios se conectan por config).
+Importing ``clinibrium.*`` is FORBIDDEN and importing ``ml_engine.domains.*``
+is FORBIDDEN (the core knows no domain; domains plug in via config).
 """

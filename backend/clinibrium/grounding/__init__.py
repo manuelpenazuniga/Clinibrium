@@ -1,21 +1,21 @@
-"""Interfaz pública del módulo `grounding` (RAG de criterios clínicos).
+"""Public interface of the `grounding` module (clinical criteria RAG).
 
-Hoja del grafo `clinibrium.*` (AD-10): este paquete SOLO importa de
-`clinibrium.contracts` + libs + `clinibrium.config` (settings) + su
-propia conexión a Postgres/pgvector. NO importa `reasoner`, los motores
-(`redflag_engine`, `differential_engine`), `orchestrator`, `rails` ni
-`api`. Esa frontera es la que le permite al reasoner (T7) consumir el
-grounding **a través de una interfaz** y degradar elegante a `rag_inline`
-cuando pgvector no está disponible.
+Leaf of the `clinibrium.*` graph (AD-10): this package ONLY imports from
+`clinibrium.contracts` + libs + `clinibrium.config` (settings) + its own
+Postgres/pgvector connection. It does NOT import `reasoner`, the engines
+(`redflag_engine`, `differential_engine`), `orchestrator`, `rails` or
+`api`. That boundary is what lets the reasoner (T7) consume the
+grounding **through an interface** and degrade gracefully to `rag_inline`
+when pgvector is unavailable.
 
-AD-5 / regla dura 3: el corpus RAG es por **PARÁFRASIS PROPIA** de los
-criterios ICVD — NUNCA texto verbatim (ICVD es CC BY-NC; el texto
-restringido no se usa, las reglas como hechos sí son re-escribibles).
-Las paráfrasis viven en `inline.CORPUS` y se documentan allí como
-autoría propia del equipo.
+AD-5 / hard rule 3: the RAG corpus is built from **OUR OWN PARAPHRASE**
+of the ICVD criteria — NEVER verbatim text (ICVD is CC BY-NC; the
+restricted text is not used, while the rules as facts are rewritable).
+The paraphrases live in `inline.CORPUS` and are documented there as the
+team's own authorship.
 
-NO llama a Claude y NO fija diagnósticos: provee *chunks* (snippets de
-criterios) para que el reasoner fundamente su explicación.
+Does NOT call Claude and does NOT set diagnoses: it provides *chunks*
+(criteria snippets) for the reasoner to ground its explanation.
 """
 from __future__ import annotations
 

@@ -1,16 +1,16 @@
-"""Tests del DifferentialEngine — reglas ICVD como datos, scoring determinista.
+"""Tests for the DifferentialEngine — ICVD rules as data, deterministic scoring.
 
-Cubre los criterios de aceptación de la tarea:
-  - BPPV benigno típico ⇒ top == bppv_posterior con score alto.
-  - AVS espontáneo (head-impulse abnormal + nistagmo horizontal + sin
-    hipoacusia) ⇒ top == vestibular_neuritis.
-  - Episódico espontáneo + hipoacusia fluctuante + tinnitus + plenitud
+Covers the task's acceptance criteria:
+  - Typical benign BPPV ⇒ top == bppv_posterior with a high score.
+  - Spontaneous AVS (abnormal head-impulse + horizontal nystagmus + no
+    hearing loss) ⇒ top == vestibular_neuritis.
+  - Spontaneous episodic + fluctuating hearing loss + tinnitus + fullness
     ⇒ top == meniere.
-  - Patrón central (head_impulse normal + nistagmo vertical puro +
-    skew) ⇒ central_suspected entre los top.
-  - Determinismo: dos evaluaciones iguales.
-  - Candidatos ordenados desc; ninguno con score 0.
-  - INV-5: el módulo NO importa los prohibidos (redflag_engine,
+  - Central pattern (normal head_impulse + pure vertical nystagmus +
+    skew) ⇒ central_suspected among the top.
+  - Determinism: two identical evaluations.
+  - Candidates ordered descending; none with score 0.
+  - INV-5: the module does NOT import the forbidden ones (redflag_engine,
     reasoner, ml_client, orchestrator).
 """
 from __future__ import annotations
@@ -34,13 +34,13 @@ from clinibrium.contracts import (
 from clinibrium.differential_engine import CRITERIA, DiagnosisCriterion, evaluate
 
 # =========================================================================
-# Helpers de casos clínicos sintéticos
+# Synthetic clinical case helpers
 # =========================================================================
 
 
 def _bppv_posterior_typical() -> CaseFeatures:
-    """BPPV canal posterior benigno: positional, <1min, Dix-Hallpike +,
-    fatigable, latencia 5s, torsión confirmada por clínico.
+    """Benign posterior-canal BPPV: positional, <1min, Dix-Hallpike +,
+    fatigable, 5s latency, torsion confirmed by clinician.
     """
     return CaseFeatures(
         trigger=Trigger.positional_head,
@@ -53,8 +53,8 @@ def _bppv_posterior_typical() -> CaseFeatures:
 
 
 def _avs_periferico_typical() -> CaseFeatures:
-    """AVS espontáneo: timing agudo, head-impulse abnormal, nistagmo
-    horizontal, sin hipoacusia. ⇒ vestibular_neuritis.
+    """Spontaneous AVS: acute timing, abnormal head-impulse, horizontal
+    nystagmus, no hearing loss. ⇒ vestibular_neuritis.
     """
     return CaseFeatures(
         timing_pattern=TimingPattern.acute_continuous,
@@ -66,8 +66,8 @@ def _avs_periferico_typical() -> CaseFeatures:
 
 
 def _meniere_typical() -> CaseFeatures:
-    """Ménière: episódico espontáneo, episodios de horas, hipoacusia
-    fluctuante, tinnitus, plenitud aural.
+    """Ménière: spontaneous episodic, hours-long episodes, fluctuating
+    hearing loss, tinnitus, aural fullness.
     """
     return CaseFeatures(
         timing_pattern=TimingPattern.episodic_spontaneous,
@@ -79,7 +79,7 @@ def _meniere_typical() -> CaseFeatures:
 
 
 def _central_suspected_typical() -> CaseFeatures:
-    """Patrón central: AVS + head_impulse normal + nistagmo vertical puro
+    """Central pattern: AVS + normal head_impulse + pure vertical nystagmus
     + skew deviation + focal sign (dysarthria).
     """
     return CaseFeatures(
@@ -92,18 +92,18 @@ def _central_suspected_typical() -> CaseFeatures:
 
 
 # =========================================================================
-# Escenarios clínicos (criterios de aceptación)
+# Clinical scenarios (acceptance criteria)
 # =========================================================================
 
 
 def test_bppv_posterior_top_candidate() -> None:
     result = evaluate(_bppv_posterior_typical())
-    assert result.candidates, "BPPV típico debe generar al menos un candidato"
+    assert result.candidates, "typical BPPV must yield at least one candidate"
     top = result.candidates[0]
     assert top.diagnosis == Diagnosis.bppv_posterior
-    # 6/6 criterios matchean ⇒ score == 1.0
+    # 6/6 criteria match ⇒ score == 1.0
     assert top.score >= 0.95
-    # Los 6 IDs del BPPV posterior deben figurar en rule_ids.
+    # All 6 posterior-BPPV IDs must appear in rule_ids.
     assert len(top.rule_ids) == 6
 
 
@@ -111,7 +111,7 @@ def test_vestibular_neuritis_top_candidate() -> None:
     result = evaluate(_avs_periferico_typical())
     assert result.candidates
     assert result.candidates[0].diagnosis == Diagnosis.vestibular_neuritis
-    # 5/5 criterios matchean ⇒ score == 1.0
+    # 5/5 criteria match ⇒ score == 1.0
     assert result.candidates[0].score >= 0.95
 
 
@@ -119,7 +119,7 @@ def test_meniere_top_candidate() -> None:
     result = evaluate(_meniere_typical())
     assert result.candidates
     assert result.candidates[0].diagnosis == Diagnosis.meniere
-    # 5/5 criterios matchean ⇒ score == 1.0
+    # 5/5 criteria match ⇒ score == 1.0
     assert result.candidates[0].score >= 0.95
 
 
@@ -128,13 +128,13 @@ def test_central_suspected_in_top() -> None:
     assert result.candidates
     top_3_dx = [c.diagnosis for c in result.candidates[:3]]
     assert Diagnosis.central_suspected in top_3_dx
-    # central_suspected matchea 4/6 criterios (no changing_gaze, no ataxia).
+    # central_suspected matches 4/6 criteria (no changing_gaze, no ataxia).
     cs = next(c for c in result.candidates if c.diagnosis == Diagnosis.central_suspected)
     assert cs.score > 0.5
 
 
 # =========================================================================
-# Propiedades del engine
+# Engine properties
 # =========================================================================
 
 
@@ -146,7 +146,7 @@ def test_determinism_two_evaluations_equal() -> None:
 
 
 def test_determinism_independent_case_features_instances() -> None:
-    """Dos CaseFeatures equivalentes (mismos campos) ⇒ resultados iguales."""
+    """Two equivalent CaseFeatures (same fields) ⇒ equal results."""
     f1 = _meniere_typical()
     f2 = CaseFeatures(
         timing_pattern=TimingPattern.episodic_spontaneous,
@@ -165,7 +165,7 @@ def test_candidates_ordered_desc_no_zero_scores() -> None:
     result = evaluate(f)
     scores = [c.score for c in result.candidates]
     assert scores == sorted(scores, reverse=True)
-    assert scores, "debe haber al menos un candidato con criterios matcheando"
+    assert scores, "there must be at least one candidate with matching criteria"
     assert all(c.score > 0 for c in result.candidates)
 
 
@@ -176,11 +176,11 @@ def test_returns_differential_result_type() -> None:
 
 
 def test_minimal_case_features_only_default_match() -> None:
-    """`CaseFeatures()` con todos los defaults: solo matchea criterios que
-    dependen de defaults no-`None` (p.ej. `hearing_loss == none` del criterio
-    vestibular_neuritis, dado que el default de `hearing_loss` es
-    `HearingLoss.none`). NO debe aparecer BPPV, ni central, ni meniere, ni
-    cardiogenic — evidencia espuria ausente.
+    """`CaseFeatures()` with all defaults: only matches criteria that depend
+    on non-`None` defaults (e.g. `hearing_loss == none` from the
+    vestibular_neuritis criterion, given that `hearing_loss` defaults to
+    `HearingLoss.none`). BPPV, central, meniere and cardiogenic must NOT
+    appear — no spurious evidence.
     """
     result = evaluate(CaseFeatures())
     diagnoses = {c.diagnosis for c in result.candidates}
@@ -191,13 +191,13 @@ def test_minimal_case_features_only_default_match() -> None:
     assert Diagnosis.labyrinthitis not in diagnoses
     assert Diagnosis.central_suspected not in diagnoses
     assert Diagnosis.cardiogenic_suspected not in diagnoses
-    # Único match esperado: vestibular_neuritis por hearing_loss==none (default).
+    # Only expected match: vestibular_neuritis via hearing_loss==none (default).
     assert diagnoses == {Diagnosis.vestibular_neuritis}
-    assert result.candidates[0].score < 0.2  # evidencia muy débil
+    assert result.candidates[0].score < 0.2  # very weak evidence
 
 
 def test_bppv_posterior_rule_ids_traced() -> None:
-    """Los rule_ids del top match son los IDs de la tabla CRITERIA."""
+    """The top match's rule_ids are the IDs from the CRITERIA table."""
     result = evaluate(_bppv_posterior_typical())
     top = result.candidates[0]
     bppv_ids = {c.id for c in CRITERIA if c.diagnosis == Diagnosis.bppv_posterior}
@@ -205,16 +205,16 @@ def test_bppv_posterior_rule_ids_traced() -> None:
 
 
 # =========================================================================
-# INV-5: el módulo NO importa los prohibidos.
-# Verificación adicional al grep del CI: el AST del módulo no contiene
-# ningún import de redflag_engine / reasoner / ml_client / orchestrator.
+# INV-5: the module does NOT import the forbidden ones.
+# Additional check on top of the CI grep: the module's AST contains
+# no import of redflag_engine / reasoner / ml_client / orchestrator.
 # =========================================================================
 
 
 def test_no_forbidden_imports() -> None:
-    """INV-5: ninguna sentencia `import`/`from ... import` del paquete
-    apunta a los módulos prohibidos. Verificamos sobre el AST para no
-    confundir con menciones en docstrings.
+    """INV-5: no `import`/`from ... import` statement in the package points
+    at the forbidden modules. We check the AST to avoid confusing imports
+    with mentions in docstrings.
     """
     import ast
 
@@ -245,11 +245,11 @@ def test_no_forbidden_imports() -> None:
                             offenders.append(
                                 f"{py.name}:{node.lineno} from {module} import {alias.name}"
                             )
-    assert not offenders, "INV-5 violado: " + "; ".join(offenders)
+    assert not offenders, "INV-5 violated: " + "; ".join(offenders)
 
 
 def test_criteria_are_frozen_dataclasses() -> None:
-    """`DiagnosisCriterion` es frozen ⇒ no se puede mutar post-construcción."""
+    """`DiagnosisCriterion` is frozen ⇒ cannot be mutated after construction."""
     from dataclasses import FrozenInstanceError
 
     c: DiagnosisCriterion = CRITERIA[0]
@@ -257,20 +257,20 @@ def test_criteria_are_frozen_dataclasses() -> None:
         c.weight = 999.0  # type: ignore[misc]
     except FrozenInstanceError:
         return
-    raise AssertionError("DiagnosisCriterion debería ser frozen")
+    raise AssertionError("DiagnosisCriterion should be frozen")
 
 
 # =========================================================================
-# Negativo: el engine NO toca urgencia ni recomienda tratamiento.
-# Verificamos que el output es solo un pool de candidatos, sin campos
-# de urgencia, de acción forzada ni de next-steps terapéuticos.
+# Negative: the engine does NOT touch urgency nor recommend treatment.
+# We verify the output is just a pool of candidates, with no urgency,
+# forced-action or therapeutic next-steps fields.
 # =========================================================================
 
 
 def test_result_does_not_carry_urgency_or_treatment() -> None:
-    """INV-3: el diferencial es solo un pool; urgencia/acción las sellan
-    RedFlagEngine + rails. Verificamos a nivel de shape que
-    `DifferentialResult` no expone esos campos.
+    """INV-3: the differential is just a pool; urgency/action are sealed by
+    RedFlagEngine + rails. We verify at the shape level that
+    `DifferentialResult` does not expose those fields.
     """
     from clinibrium.contracts.results import DifferentialResult as DR
 
@@ -283,4 +283,4 @@ def test_result_does_not_carry_urgency_or_treatment() -> None:
         "red_flag",
     }
     leaked = forbidden_field_markers & fields
-    assert not leaked, f"DifferentialResult expone campos prohibidos: {leaked}"
+    assert not leaked, f"DifferentialResult exposes forbidden fields: {leaked}"

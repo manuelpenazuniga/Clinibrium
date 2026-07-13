@@ -1,15 +1,15 @@
-"""Tabla de criterios ICVD del DifferentialEngine.
+"""ICVD criteria table for the DifferentialEngine.
 
-Las reglas viven como DATOS (`DiagnosisCriterion`), no como lógica
-dispersa: editar pesos o predicados es lo único que hace falta para
-recalibrar el pool priorizado de diagnósticos. Esta tabla es la
-**fuente de verdad provisional** del engine; los pesos y umbrales están
-marcados con `# TODO(clinical)` y se calibrarán con datos de validación
-clínica (ver roadmap v7.3 §4.4 y §11).
+Rules live as DATA (`DiagnosisCriterion`), not as scattered logic:
+editing weights or predicates is all it takes to recalibrate the
+prioritized diagnosis pool. This table is the engine's **provisional
+source of truth**; weights and thresholds are marked with
+`# TODO(clinical)` and will be calibrated with clinical validation
+data (see roadmap v7.3 §4.4 and §11).
 
-Hoja del grafo `clinibrium.*` (INV-5): este módulo SOLO importa de
-`clinibrium.contracts`. NO importa `redflag_engine`, `reasoner`,
-`ml_client` ni `orchestrator`. Tampoco hace I/O, LLM ni random.
+Leaf of the `clinibrium.*` graph (INV-5): this module ONLY imports from
+`clinibrium.contracts`. It does NOT import `redflag_engine`, `reasoner`,
+`ml_client` or `orchestrator`. No I/O, LLM or randomness either.
 """
 from __future__ import annotations
 
@@ -31,10 +31,10 @@ from clinibrium.contracts.features import CaseFeatures
 
 @dataclass(frozen=True)
 class DiagnosisCriterion:
-    """Criterio individual: si `predicate(features)` es True, aporta
-    `weight` al score crudo del `diagnosis`.
+    """Individual criterion: if `predicate(features)` is True, it adds
+    `weight` to the raw score of `diagnosis`.
 
-    Los IDs son trazables a las reglas ICVD (formato `DX-<KEY>-<n>`).
+    IDs are traceable to the ICVD rules (format `DX-<KEY>-<n>`).
     """
 
     id: str
@@ -44,8 +44,8 @@ class DiagnosisCriterion:
 
 
 # ---------------------------------------------------------------------------
-# Predicados puros sobre CaseFeatures (nombres EXACTOS de contracts.features).
-# Cada uno es una función booleana sin efectos secundarios, sin I/O, sin LLM.
+# Pure predicates over CaseFeatures (EXACT names from contracts.features).
+# Each one is a boolean function with no side effects, no I/O, no LLM.
 # ---------------------------------------------------------------------------
 
 
@@ -69,7 +69,7 @@ def _nystagmus_fatigable(f: CaseFeatures) -> bool:
 
 
 def _nystagmus_latency_short(f: CaseFeatures) -> bool:
-    # TODO(clinical): umbral 20 s es provisional; nistagmo BPPV típico 1-5 s.
+    # TODO(clinical): the 20 s threshold is provisional; typical BPPV nystagmus is 1-5 s.
     return f.nystagmus_latency_s is not None and f.nystagmus_latency_s <= 20
 
 
@@ -176,15 +176,15 @@ def _chest_pain(f: CaseFeatures) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# CRITERIA — fuente de verdad provisional del scoring. Editar pesos/predicados
-# es TODO lo que se necesita para recalibrar. Los `# TODO(clinical)` y los
-# comentarios `# NOTA` documentan el régimen provisional y los puntos donde
-# los rieles / RedFlagEngine (separados) imponen la decisión final.
+# CRITERIA — provisional source of truth for scoring. Editing weights/predicates
+# is ALL that is needed to recalibrate. The `# TODO(clinical)` markers and the
+# `# NOTE` comments document the provisional regime and the points where the
+# rails / RedFlagEngine (separate) impose the final decision.
 # ---------------------------------------------------------------------------
 
 CRITERIA: list[DiagnosisCriterion] = [
     # --- bppv_posterior ---
-    # TODO(clinical): calibrar pesos y umbrales con datos de validación.
+    # TODO(clinical): calibrate weights and thresholds with validation data.
     DiagnosisCriterion(
         id="DX-BPPV-P-1",
         diagnosis=Diagnosis.bppv_posterior,
@@ -222,8 +222,8 @@ CRITERIA: list[DiagnosisCriterion] = [
         predicate=_torsion_confirmed,
     ),
     # --- bppv_horizontal ---
-    # TODO(clinical): requiere supine roll test, no modelado aún;
-    # candidato de baja confianza.
+    # TODO(clinical): requires supine roll test, not modeled yet;
+    # low-confidence candidate.
     DiagnosisCriterion(
         id="DX-BPPV-H-1",
         diagnosis=Diagnosis.bppv_horizontal,
@@ -292,7 +292,7 @@ CRITERIA: list[DiagnosisCriterion] = [
         weight=0.15,
         predicate=_episode_duration_medium,
     ),
-    # --- vestibular_neuritis (signo periférico: head-impulse anormal) ---
+    # --- vestibular_neuritis (peripheral sign: abnormal head-impulse) ---
     DiagnosisCriterion(
         id="DX-VN-1",
         diagnosis=Diagnosis.vestibular_neuritis,
@@ -324,9 +324,9 @@ CRITERIA: list[DiagnosisCriterion] = [
         predicate=_hearing_loss_none,
     ),
     # --- labyrinthitis ---
-    # NOTA: hipoacusia súbita también dispara red flag (A8/B1); el diferencial
-    # lista labyrinthitis pero los rieles fuerzan urgente — no se puede
-    # excluir AICA. v7.3 §4.2.
+    # NOTE: sudden hearing loss also triggers a red flag (A8/B1); the
+    # differential lists labyrinthitis but the rails force urgent — AICA
+    # cannot be excluded. v7.3 §4.2.
     DiagnosisCriterion(
         id="DX-LAB-1",
         diagnosis=Diagnosis.labyrinthitis,
@@ -351,7 +351,7 @@ CRITERIA: list[DiagnosisCriterion] = [
         weight=0.10,
         predicate=_tinnitus,
     ),
-    # --- central_suspected (HINTS: head-impulse normal en AVS es SOSPECHOSO) ---
+    # --- central_suspected (HINTS: normal head-impulse in AVS is SUSPICIOUS) ---
     DiagnosisCriterion(
         id="DX-CENT-1",
         diagnosis=Diagnosis.central_suspected,

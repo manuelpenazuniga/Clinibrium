@@ -1,4 +1,4 @@
-"""TB1.2 — generador sintético + encode ciego."""
+"""TB1.2 — synthetic generator + blind encode."""
 import dataclasses
 
 import numpy as np
@@ -32,22 +32,22 @@ def test_row_count_matches_n_samples() -> None:
 def test_bppv_prior_is_positional() -> None:
     df = generate(SPEC, FEATURES, seed=20260711)
     bppv = df[df["label"] == "bppv_posterior"]
-    # robusto a missingness: medir sobre los valores presentes
+    # robust to missingness: measure over the present values
     trig = bppv["trigger"].dropna()
     assert (trig == "positional_head").mean() > 0.7
 
 
 def test_missingness_drops_some_features() -> None:
-    """SPEC tiene missing_rate>0 → algunas features quedan faltantes (esparso)."""
+    """SPEC has missing_rate>0 → some features end up missing (sparse)."""
     df = generate(SPEC, FEATURES, seed=20260711)
     assert df["trigger"].isna().mean() > 0.05
-    # sin missingness: categóricas siempre presentes
+    # without missingness: categoricals always present
     df0 = generate(dataclasses.replace(SPEC, missing_rate=0.0), FEATURES, seed=1)
     assert df0["trigger"].isna().sum() == 0
 
 
 def test_bppv_has_no_spontaneous_pure_torsional() -> None:
-    """Fix P0.5: el perfil BPPV NO debe emitir torsional/vertical puro (eso es central)."""
+    """P0.5 fix: the BPPV profile must NOT emit pure torsional/vertical (that is central)."""
     df = generate(dataclasses.replace(SPEC, missing_rate=0.0), FEATURES, seed=1)
     bppv = df[df["label"] == "bppv_posterior"]["nystagmus_direction"]
     assert (bppv == "torsional_pure").sum() == 0
@@ -60,7 +60,7 @@ def test_central_prior_has_danger_signal() -> None:
     x["label"] = df["label"].values
     central = x[x["label"] == "central_suspected"]
     bppv = x[x["label"] == "bppv_posterior"]
-    # el gate de peligro debe ver más señal de riesgo en central que en BPPV
+    # the danger gate must see more risk signal in central than in BPPV
     assert central["danger_sign_count"].mean() > bppv["danger_sign_count"].mean()
     assert central["hints_central_pattern"].mean() > bppv["hints_central_pattern"].mean()
 
@@ -70,7 +70,7 @@ def test_encode_shape_and_categoricals() -> None:
     x, cat_cols = encode(df, FEATURES)
     assert list(x.columns) == list(FEATURES.feature_names)
     assert set(cat_cols) == set(FEATURES.categorical_names)
-    # categóricas como string, numéricas como float
+    # categoricals as string, numerics as float
     for c in cat_cols:
         assert x[c].dtype == object
     for c in FEATURES.numeric_feature_names:
@@ -78,11 +78,11 @@ def test_encode_shape_and_categoricals() -> None:
 
 
 def test_encode_derived_never_nan() -> None:
-    """Las derivadas NUNCA son NaN (aun cuando focal_signs esté ausente → 0)."""
+    """Derived features are NEVER NaN (even when focal_signs is missing → 0)."""
     df = generate(SPEC, FEATURES, seed=20260711)
     x, _ = encode(df, FEATURES)
     for d in FEATURES.derived:
-        assert x[d.name].isna().sum() == 0, f"{d.name} tiene NaN"
+        assert x[d.name].isna().sum() == 0, f"{d.name} has NaN"
 
 
 def test_encode_missing_categorical_becomes_sentinel() -> None:
@@ -93,7 +93,7 @@ def test_encode_missing_categorical_becomes_sentinel() -> None:
 
 
 def test_encode_from_realistic_casefeatures_row() -> None:
-    """Forma 'serving': focal_signs como LISTA (no conteo) → derivadas correctas."""
+    """'Serving' form: focal_signs as a LIST (not a count) → correct derived features."""
     row = {
         "trigger": "spontaneous", "timing_pattern": "acute_continuous",
         "head_impulse": "normal", "focal_signs": ["dysarthria", "diplopia"],
@@ -102,4 +102,4 @@ def test_encode_from_realistic_casefeatures_row() -> None:
     x, _ = encode([row], FEATURES)
     assert x["danger_sign_count"].iloc[0] == 3.0          # 2 focal + ataxia
     assert x["hints_central_pattern"].iloc[0] == 1.0      # normal + acute
-    assert x["vascular_risk_count"].iloc[0] == 2.0        # 1 factor + edad≥60
+    assert x["vascular_risk_count"].iloc[0] == 2.0        # 1 factor + age>=60

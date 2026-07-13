@@ -1,64 +1,62 @@
-"""Mapea un ``PipelineResult`` a un ``Bundle`` FHIR R4 (formato de salida, AD-9).
+"""Maps a ``PipelineResult`` to a FHIR R4 ``Bundle`` (output format, AD-9).
 
-Función pura — sin I/O, sin red. Dado:
+Pure function — no I/O, no network. Given:
 
-  - ``PipelineResult`` (output del pipeline)
-  - ``CaseFeatures``   (input estructurado, sin PII)
-  - ``AuditEvent``     (evento inmutable de la invocación, INV-4)
+  - ``PipelineResult`` (pipeline output)
+  - ``CaseFeatures``   (structured input, no PII)
+  - ``AuditEvent``     (immutable event of the invocation, INV-4)
 
-produce un ``dict`` JSON-serializable con un Bundle tipo ``collection``
-que agrupa los recursos FHIR R4 auditables: ``Questionnaire`` (intake
-adaptativo, SDC IG), ``QuestionnaireResponse`` (respuestas
-desidentificadas), ``Observation`` (variables clínicas clave),
-``DetectedIssue`` + ``Flag`` (uno por cada red flag disparada),
-``ClinicalImpression`` (diferencial + razonamiento) y ``AuditEvent``
-(perfil CL Core ``Auditoria``).
+produces a JSON-serializable ``dict`` with a ``collection``-type Bundle
+grouping the auditable FHIR R4 resources: ``Questionnaire`` (adaptive
+intake, SDC IG), ``QuestionnaireResponse`` (de-identified answers),
+``Observation`` (key clinical variables), ``DetectedIssue`` + ``Flag``
+(one per fired red flag), ``ClinicalImpression`` (differential +
+reasoning) and ``AuditEvent`` (CL Core ``Auditoria`` profile).
 
-Grafo del módulo (regla dura del mapa de Clinibrium):
+Module graph (hard rule of the Clinibrium module map):
     fhir → contracts   ✓
     fhir → stdlib      ✓ (uuid, datetime, enum)
 
-PROHIBIDO importar: ``engines``, ``reasoner``, ``rails``, ``orchestrator``,
+FORBIDDEN imports: ``engines``, ``reasoner``, ``rails``, ``orchestrator``,
 ``ml_client``, ``api``, ``storage``, ``audit``, ``grounding``, ``config``.
 
-Perfiles CL Core IG 1.9.3 (R4):
-    - ``AuditEvent`` (CL ``Auditoria``) — perfil nativo CL Core;
-      referenciado en ``meta.profile``.
+CL Core IG 1.9.3 (R4) profiles:
+    - ``AuditEvent`` (CL ``Auditoria``) — native CL Core profile;
+      referenced in ``meta.profile``.
 
-Perfiles Clinibrium propios (CL Core NO provee para Questionnaire /
-QuestionnaireResponse / ClinicalImpression — registrados como
-extensión):
+Clinibrium's own profiles (CL Core does NOT provide Questionnaire /
+QuestionnaireResponse / ClinicalImpression — registered as an
+extension):
     - ``cl-questionnaire``
     - ``cl-questionnaire-response``
     - ``cl-clinical-impression``
 
-Extensiones propias (URLs canónicas declaradas en este módulo):
-    - ``extension-questionnaire-version``: versión del cuestionario
-      adjunta al ``QuestionnaireResponse``.
-    - ``extension-reasoner-degraded``: flag que marca el
-      ``ClinicalImpression`` cuando el razonador (Claude) no estuvo
-      disponible.
-    - ``extension-rail-triggered``: lista de rail-ids (R-INV1, R-EPLEY-D,
-      R-E2, R-DIVERGENCIA) disparados, en ``ClinicalImpression`` y
+Own extensions (canonical URLs declared in this module):
+    - ``extension-questionnaire-version``: questionnaire version
+      attached to the ``QuestionnaireResponse``.
+    - ``extension-reasoner-degraded``: flag marking the
+      ``ClinicalImpression`` when the reasoner (Claude) was not
+      available.
+    - ``extension-rail-triggered``: list of rail-ids (R-INV1, R-EPLEY-D,
+      R-E2, R-DIVERGENCIA) that fired, in ``ClinicalImpression`` and
       ``AuditEvent.entity.detail``.
 
-IDs determinísticos (tests estables):
-    ``uuid5(_URN_NAMESPACE, f"{case_id}/{kind}/{key}")``. Mismo
-    ``case_id`` + mismo ``kind`` + mismo ``key`` ⇒ mismo id.
-    NO se usa ``uuid4`` aleatorio.
+Deterministic IDs (stable tests):
+    ``uuid5(_URN_NAMESPACE, f"{case_id}/{kind}/{key}")``. Same
+    ``case_id`` + same ``kind`` + same ``key`` ⇒ same id.
+    Random ``uuid4`` is NOT used.
 
-Referencias internas:
-    ``fullUrl = "urn:uuid:{id}"``. Las referencias entre recursos
-    (p.ej. ``QuestionnaireResponse.questionnaire``) usan el mismo
-    esquema. Cada referencia en el bundle resuelve a un recurso
-    presente en el mismo bundle.
+Internal references:
+    ``fullUrl = "urn:uuid:{id}"``. References between resources
+    (e.g. ``QuestionnaireResponse.questionnaire``) use the same
+    scheme. Every reference in the bundle resolves to a resource
+    present in the same bundle.
 
-Codes SNOMED CT / LOINC:
-    Los códigos de ``Observation.code`` y de ``ClinicalImpression.code``
-    son **placeholders** marcados ``TODO(clinical)`` — confirmar con el
-    superespecialista antes de producción. Los códigos SNOMED como
-    reglas/hechos no son copyrightables; los códigos canónicos sí
-    deben ser verificados.
+SNOMED CT / LOINC codes:
+    The ``Observation.code`` and ``ClinicalImpression.code`` codes are
+    **placeholders** marked ``TODO(clinical)`` — confirm with the
+    superspecialist before production. SNOMED codes as rules/facts are
+    not copyrightable; the canonical codes do need to be verified.
 """
 from __future__ import annotations
 
@@ -88,33 +86,33 @@ from clinibrium.contracts.results import (
 )
 
 # ---------------------------------------------------------------------------
-# Constantes — namespaces, URLs, codes
+# Constants — namespaces, URLs, codes
 # ---------------------------------------------------------------------------
 
 _URN_NAMESPACE: uuid.UUID = uuid.UUID("8d3a3b3e-7c14-5b9d-9b3a-3b3e7c145b9d")
-"""Namespace fijo para ``uuid5``; garantiza ids determinísticos entre runs."""
+"""Fixed namespace for ``uuid5``; guarantees deterministic ids across runs."""
 
-# CL Core IG 1.9.3 (R4) — perfil CL ``Auditoria`` (perfil nativo).
+# CL Core IG 1.9.3 (R4) — CL ``Auditoria`` profile (native profile).
 _CLCORE_AUDIT_PROFILE: str = "http://hl7.cl/fhir/ig/clcore/StructureDefinition/Auditoria"
 _CLCORE_PATIENT_PROFILE: str = (
     "http://hl7.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl"
 )
 
-# Perfiles Clinibrium (CL Core no provee Questionnaire /
-# QuestionnaireResponse / ClinicalImpression → declaramos propios).
+# Clinibrium profiles (CL Core does not provide Questionnaire /
+# QuestionnaireResponse / ClinicalImpression → we declare our own).
 _CLINIBRIUM_BASE: str = "http://clinibrium.cl/fhir/StructureDefinition"
 _PROFILE_QUESTIONNAIRE: str = f"{_CLINIBRIUM_BASE}/cl-questionnaire"
 _PROFILE_QUESTIONNAIRE_RESPONSE: str = f"{_CLINIBRIUM_BASE}/cl-questionnaire-response"
 _PROFILE_CLINICAL_IMPRESSION: str = f"{_CLINIBRIUM_BASE}/cl-clinical-impression"
 
-# Extensiones propias (URLs canónicas).
+# Own extensions (canonical URLs).
 _EXT_QUESTIONNAIRE_VERSION: str = (
     f"{_CLINIBRIUM_BASE}/extension-questionnaire-version"
 )
 _EXT_REASONER_DEGRADED: str = f"{_CLINIBRIUM_BASE}/extension-reasoner-degraded"
 _EXT_RAIL_TRIGGERED: str = f"{_CLINIBRIUM_BASE}/extension-rail-triggered"
 
-# Code systems locales (vocabulario del dominio Clinibrium / VertigoDx).
+# Local code systems (Clinibrium / VertigoDx domain vocabulary).
 _CS_SYMPTOM_DURATION: str = "http://clinibrium.cl/fhir/CodeSystem/symptom-duration"
 _CS_ONSET: str = "http://clinibrium.cl/fhir/CodeSystem/onset"
 _CS_TRIGGER: str = "http://clinibrium.cl/fhir/CodeSystem/trigger"
@@ -136,10 +134,10 @@ _CS_AUDIT_AGENT_TYPE: str = (
 _CS_UNITSOFMEASURE: str = "http://unitsofmeasure.org"
 _UCUM_SECOND: str = "s"
 
-# Coding systems estándar (placeholders — ver TODO(clinical) al final del módulo).
+# Standard coding systems (placeholders — see TODO(clinical) at the end of the module).
 _CS_SNOMED: str = "http://snomed.info/sct"
 
-# TODO(clinical): confirmar los SNOMED CT canónicos con el superespecialista.
+# TODO(clinical): confirm the canonical SNOMED CT codes with the superspecialist.
 _SNOMED_NYSTAGMUS_OBSERVATION: str = "271925006"  # placeholder
 _SNOMED_NYSTAGMUS_DURATION_S: str = "30714003"  # placeholder
 _SNOMED_NYSTAGMUS_LATENCY_S: str = "271931008"  # placeholder
@@ -153,12 +151,12 @@ _AUDIT_OUTCOME_SUCCESS: str = "0"
 # AuditEvent action (R4): C/R/U/D/E.
 _AUDIT_ACTION_EXECUTE: str = "E"
 
-# Questionnaire version (constante local — bumpear al cambiar el template).
+# Questionnaire version (local constant — bump when the template changes).
 _QUESTIONNAIRE_VERSION: str = "0.1.0"
 _QUESTIONNAIRE_URL: str = "urn:clinibrium:questionnaire:vertigodx-intake"
 _QUESTIONNAIRE_DATE: str = "2026-07-10"
 
-# Display strings cortos.
+# Short display strings.
 _DISPLAY_EXAM: str = "Exam"
 _DISPLAY_CLINICAL: str = "Clinical"
 _DISPLAY_HUMANUSER: str = "Human User"
@@ -168,15 +166,16 @@ _DISPLAY_CLINICAL_IMPRESSION: str = "Clinical impression"
 
 
 # ---------------------------------------------------------------------------
-# Feature → Questionnaire item mapping (template, NO las 50 features)
+# Feature → Questionnaire item mapping (template, NOT all 50 features)
 # ---------------------------------------------------------------------------
 
-# Cada item del template declara: linkId, text, type, code system, y las
-# options (cuando es choice). Esta tabla es la fuente de verdad para
-# construir el Questionnaire (template) Y el QuestionnaireResponse
-# (instance) — al ser campos representativos del intake cubre los
-# features estructurados principales; el QuestionnaireResponse incluye
-# además items para features no modelados en el template (linkId 11+).
+# Each template item declares: linkId, text, type, code system, and the
+# options (when it is a choice). This table is the source of truth for
+# building the Questionnaire (template) AND the QuestionnaireResponse
+# (instance) — being representative intake fields it covers the main
+# structured features; the QuestionnaireResponse additionally includes
+# items for features not modeled in the template (linkId 11+).
+# Item "text" values are clinician-facing (serialized into the bundle) — Spanish.
 
 _FEATURE_TEMPLATE: list[dict[str, Any]] = [
     {
@@ -246,8 +245,8 @@ _FEATURE_TEMPLATE: list[dict[str, Any]] = [
         "type": "choice",
         "system": _CS_DIX_HALLPIKE,
         "options": [e.value for e in DixHallpikeResult],
-        # enableWhen: solo se muestra si trigger=positional_head
-        # (Dix-Hallpike solo aplica a sospecha posicional).
+        # enableWhen: only shown if trigger=positional_head
+        # (Dix-Hallpike only applies to positional suspicion).
         "enableWhen": [
             {
                 "question": "3",
@@ -268,8 +267,8 @@ _FEATURE_TEMPLATE: list[dict[str, Any]] = [
         "repeats": True,
         "system": _CS_FOCAL_SIGN,
         "options": [e.value for e in FocalSign],
-        # enableWhen: focal signs solo se relevan si onset=sudden
-        # (síndrome vestibular agudo).
+        # enableWhen: focal signs are only collected if onset=sudden
+        # (acute vestibular syndrome).
         "enableWhen": [
             {
                 "question": "2",
@@ -290,16 +289,16 @@ _FEATURE_TEMPLATE_BY_FIELD: dict[str, dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
-# Helpers genéricos
+# Generic helpers
 # ---------------------------------------------------------------------------
 
 
 def _resource(resource_type: str, **fields: Any) -> dict[str, Any]:
-    """Arma un recurso FHIR R4 como dict plano.
+    """Builds a FHIR R4 resource as a plain dict.
 
-    Patrón: ``{"resourceType": <type>, ...fields}``. ``None`` se filtra
-    para no emitir campos vacíos.  Los campos cuyo valor es un dict /
-    list pasan tal cual.
+    Pattern: ``{"resourceType": <type>, ...fields}``. ``None`` is filtered
+    out so empty fields are not emitted.  Fields whose value is a dict /
+    list pass through as-is.
     """
     out: dict[str, Any] = {"resourceType": resource_type}
     for k, v in fields.items():
@@ -312,7 +311,7 @@ def _resource(resource_type: str, **fields: Any) -> dict[str, Any]:
 def _coding(
     system: str | None, code: str, display: str | None = None
 ) -> dict[str, Any]:
-    """Coding FHIR R4 como dict."""
+    """FHIR R4 Coding as a dict."""
     out: dict[str, Any] = {"code": code}
     if system is not None:
         out["system"] = system
@@ -322,28 +321,28 @@ def _coding(
 
 
 def _id_for(case_id: str, kind: str, key: str = "") -> str:
-    """ID determinístico para un recurso del bundle.
+    """Deterministic ID for a bundle resource.
 
-    ``uuid5(_URN_NAMESPACE, f"{case_id}/{kind}/{key}")``. ``key`` vacío
-    sigue produciendo un id estable por ``(case_id, kind)``.
+    ``uuid5(_URN_NAMESPACE, f"{case_id}/{kind}/{key}")``. An empty ``key``
+    still produces a stable id per ``(case_id, kind)``.
     """
     return str(uuid.uuid5(_URN_NAMESPACE, f"{case_id}/{kind}/{key}"))
 
 
 def _urn(resource_id: str) -> str:
-    """fullUrl / reference de un recurso del bundle (``urn:uuid:{id}``)."""
+    """fullUrl / reference of a bundle resource (``urn:uuid:{id}``)."""
     return f"urn:uuid:{resource_id}"
 
 
 def _datetime_iso(dt: datetime) -> str:
-    """Serializa un datetime a ISO 8601 con tz."""
+    """Serializes a datetime to ISO 8601 with tz."""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
 
 
 def _annotation(text: str, time: datetime | None = None) -> dict[str, Any]:
-    """Annotation FHIR R4: ``{text, time?}``."""
+    """FHIR R4 Annotation: ``{text, time?}``."""
     out: dict[str, Any] = {"text": text}
     if time is not None:
         out["time"] = _datetime_iso(time)
@@ -351,23 +350,23 @@ def _annotation(text: str, time: datetime | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Builders por recurso
+# Per-resource builders
 # ---------------------------------------------------------------------------
 
 
 def _build_minimal_patient(case_id: str) -> tuple[dict[str, Any], str]:
-    """Patient placeholder (sin PII) para que las referencias resuelvan.
+    """Patient placeholder (no PII) so that references resolve.
 
-    La política de privacidad (INV-2 / AD-7) prohíbe cualquier PII o
-    identificador externo; el Patient es solo un anchor de referencia
-    dentro del bundle. NO incluye nombre, RUT, DOB ni dirección.
+    The privacy policy (INV-2 / AD-7) forbids any PII or external
+    identifier; the Patient is only a reference anchor within the
+    bundle. It does NOT include name, RUT, DOB or address.
     """
     pid = _id_for(case_id, "Patient")
     resource = _resource(
         "Patient",
         id=pid,
         meta={"profile": [_CLCORE_PATIENT_PROFILE]},
-        # Marcamos el Patient como no-real (placeholder para referencias).
+        # Mark the Patient as not-real (placeholder for references).
         active=False,
         text={
             "status": "generated",
@@ -383,11 +382,11 @@ def _build_minimal_patient(case_id: str) -> tuple[dict[str, Any], str]:
 
 
 def _build_questionnaire(case_id: str) -> dict[str, Any]:
-    """Questionnaire (SDC IG) — template del intake adaptativo.
+    """Questionnaire (SDC IG) — adaptive intake template.
 
-    Contiene los items representativos (no las 50 features) e incluye
-    ``enableWhen`` para dos branches de ejemplo (Dix-Hallpike si
-    trigger=positional_head; focal_signs si onset=sudden).
+    Contains the representative items (not the 50 features) and includes
+    ``enableWhen`` for two example branches (Dix-Hallpike if
+    trigger=positional_head; focal_signs if onset=sudden).
     """
     qid = _id_for(case_id, "Questionnaire")
     items: list[dict[str, Any]] = []
@@ -437,11 +436,11 @@ def _build_questionnaire_response(
     subject_urn: str,
     now: datetime,
 ) -> dict[str, Any]:
-    """QuestionnaireResponse — una respuesta por feature con valor.
+    """QuestionnaireResponse — one answer per feature with a value.
 
-    Itera por TODOS los fields del modelo ``CaseFeatures``; los
-    presentes en el template usan su ``linkId``, el resto recibe
-    ``linkId`` numérico correlativo (11+).
+    Iterates over ALL fields of the ``CaseFeatures`` model; those
+    present in the template use their ``linkId``, the rest get a
+    sequential numeric ``linkId`` (11+).
     """
     qid = _id_for(case_id, "Questionnaire")
     qrid = _id_for(case_id, "QuestionnaireResponse")
@@ -465,7 +464,7 @@ def _build_questionnaire_response(
             answer: dict[str, Any] = {"valueCoding": _coding(None, code=value.value)}
         elif isinstance(value, set):
             if not value:
-                continue  # set vacío → no responder
+                continue  # empty set → no answer
             if all(isinstance(v, Enum) for v in value):
                 answer = {
                     "valueCoding": [
@@ -481,7 +480,7 @@ def _build_questionnaire_response(
         elif isinstance(value, float):
             answer = {"valueDecimal": value}
         elif value is None:
-            continue  # feature opcional sin valor → no responder
+            continue  # optional feature without value → no answer
         else:
             answer = {"valueString": str(value)}
 
@@ -519,10 +518,10 @@ def _build_observations(
     subject_urn: str,
     now: datetime,
 ) -> list[dict[str, Any]]:
-    """Observations para variables clínicas clave.
+    """Observations for key clinical variables.
 
-    Solo emitimos Observations para features con valor; los códigos
-    SNOMED CT son **placeholders** marcados ``TODO(clinical)``.
+    We only emit Observations for features with a value; the SNOMED CT
+    codes are **placeholders** marked ``TODO(clinical)``.
     """
     out: list[dict[str, Any]] = []
 
@@ -590,7 +589,7 @@ def _build_observations(
             )
         )
 
-    # Nistagmo (dirección)
+    # Nystagmus (direction)
     if features.nystagmus_direction != NystagmusDirection.none:
         _emit_codeable(
             _SNOMED_NYSTAGMUS_OBSERVATION,
@@ -600,7 +599,7 @@ def _build_observations(
             "nystagmus_direction",
         )
 
-    # Latencia del nistagmo
+    # Nystagmus latency
     if features.nystagmus_latency_s is not None:
         _emit_quantity(
             _SNOMED_NYSTAGMUS_LATENCY_S,
@@ -611,7 +610,7 @@ def _build_observations(
             "nystagmus_latency_s",
         )
 
-    # Duración del nistagmo
+    # Nystagmus duration
     if features.nystagmus_duration_s is not None:
         _emit_quantity(
             _SNOMED_NYSTAGMUS_DURATION_S,
@@ -622,7 +621,7 @@ def _build_observations(
             "nystagmus_duration_s",
         )
 
-    # Dix-Hallpike (si fue hecho)
+    # Dix-Hallpike (if performed)
     if features.dix_hallpike != DixHallpikeResult.not_done:
         _emit_codeable(
             _SNOMED_DIX_HALLPIKE,
@@ -643,7 +642,7 @@ def _build_detected_issue(
     audit_urn: str,
     now: datetime,
 ) -> dict[str, Any]:
-    """DetectedIssue por cada red flag disparada (``severity=high``)."""
+    """DetectedIssue for each fired red flag (``severity=high``)."""
     did = _id_for(case_id, "DetectedIssue", str(hit_index))
     forced_actions = [a.value for a in hit.forced_actions]
     return _resource(
@@ -671,7 +670,7 @@ def _build_flag(
     hit_index: int,
     subject_urn: str,
 ) -> dict[str, Any]:
-    """Flag por cada red flag disparada (alerta clínica)."""
+    """Flag for each fired red flag (clinical alert)."""
     fid = _id_for(case_id, "Flag", str(hit_index))
     forced_actions = [a.value for a in hit.forced_actions]
     return _resource(
@@ -704,11 +703,12 @@ def _build_clinical_impression(
     subject_urn: str,
     now: datetime,
 ) -> dict[str, Any]:
-    """ClinicalImpression — el resultado: candidatos, urgency, razonamiento.
+    """ClinicalImpression — the result: candidates, urgency, reasoning.
 
-    Si ``result.reasoning`` es None, agrega una nota explícita
-    "razonador no disponible (degradado)" y la extensión
-    ``extension-reasoner-degraded`` para que la auditoría lo vea.
+    If ``result.reasoning`` is None, adds an explicit
+    "reasoner unavailable (degraded)" note (Spanish, clinician-facing)
+    and the ``extension-reasoner-degraded`` extension so the audit
+    can see it.
     """
     ciid = _id_for(case_id, "ClinicalImpression")
     findings: list[dict[str, Any]] = [
@@ -791,7 +791,7 @@ def _build_clinical_impression(
 
 
 def _finding_for_candidate(c: DifferentialCandidate) -> dict[str, Any]:
-    """Mapping ``DifferentialCandidate`` → ``ClinicalImpression.finding[]``."""
+    """Maps ``DifferentialCandidate`` → ``ClinicalImpression.finding[]``."""
     rule_ids = f"; rule_ids={c.rule_ids}" if c.rule_ids else ""
     return {
         "itemCodeableConcept": {
@@ -806,10 +806,10 @@ def _build_audit_event(
     audit: AuditEvent,
     subject_urn: str,
 ) -> dict[str, Any]:
-    """AuditEvent (perfil CL Core ``Auditoria``) — quién/qué/cuándo.
+    """AuditEvent (CL Core ``Auditoria`` profile) — who/what/when.
 
-    El hash de features, la urgencia, ``red_flag_activa``, ``model_used``
-    y el ``reasoner_status`` se adjuntan como ``entity.detail[]``.
+    The features hash, urgency, ``red_flag_activa``, ``model_used``
+    and ``reasoner_status`` are attached as ``entity.detail[]``.
     """
     aaid = _id_for(case_id, "AuditEvent")
     reasoner_status = "ok" if audit.model_used is not None else "degraded"
@@ -857,10 +857,10 @@ def _build_audit_event(
                     "code": "data",
                     "display": _DISPLAY_DATA,
                 },
-                # ``what`` es un Reference(Resource) — NO referenciamos un
-                # "PipelineCase" inexistente (no es recurso FHIR). Usamos
-                # ``description`` para describir el caso y los details
-                # estructurados (hash, urgency, etc.) en ``detail[]``.
+                # ``what`` is a Reference(Resource) — we do NOT reference a
+                # nonexistent "PipelineCase" (not a FHIR resource). We use
+                # ``description`` to describe the case and the structured
+                # details (hash, urgency, etc.) go in ``detail[]``.
                 "description": f"case_id={case_id}",
                 "detail": [
                     {
@@ -890,7 +890,7 @@ def _build_audit_event(
 
 
 # ---------------------------------------------------------------------------
-# Bundle — orquestación
+# Bundle — orchestration
 # ---------------------------------------------------------------------------
 
 
@@ -899,35 +899,35 @@ def to_bundle(
     features: CaseFeatures,
     audit: AuditEvent,
 ) -> dict[str, Any]:
-    """Produce un ``Bundle`` FHIR R4 (tipo ``collection``) con el artefacto auditable.
+    """Produces a FHIR R4 ``Bundle`` (type ``collection``) with the auditable artifact.
 
-    Recursos incluidos:
-      - ``Patient``              — placeholder sin PII (anchor de referencias).
-      - ``Questionnaire``        — template SDC del intake adaptativo.
-      - ``QuestionnaireResponse``— respuestas estructuradas de las CaseFeatures.
-      - ``Observation`` × N      — variables clínicas clave (1 por feature relevante).
-      - ``ClinicalImpression``   — diferencial + urgencia + razonamiento de Claude.
-      - ``DetectedIssue`` × N    — uno por cada ``result.red_flag.hits`` (severity=high).
-      - ``Flag`` × N             — uno por cada ``result.red_flag.hits``.
-      - ``AuditEvent``           — evento inmutable de la invocación (perfil CL Auditoria).
-      - ``Bundle``               — el contenedor tipo ``collection``.
+    Included resources:
+      - ``Patient``              — placeholder without PII (reference anchor).
+      - ``Questionnaire``        — SDC template of the adaptive intake.
+      - ``QuestionnaireResponse``— structured answers from the CaseFeatures.
+      - ``Observation`` × N      — key clinical variables (1 per relevant feature).
+      - ``ClinicalImpression``   — differential + urgency + Claude's reasoning.
+      - ``DetectedIssue`` × N    — one per ``result.red_flag.hits`` (severity=high).
+      - ``Flag`` × N             — one per ``result.red_flag.hits``.
+      - ``AuditEvent``           — immutable event of the invocation (CL Auditoria profile).
+      - ``Bundle``               — the ``collection``-type container.
 
-    Determinismo: todos los IDs se derivan con ``uuid5(namespace, ...)``
-    a partir de ``case_id``; el mismo input produce el mismo bundle.
-    El ``timestamp`` del bundle se toma de ``audit.occurred_at`` para
-    garantizar determinismo entre llamadas.  Sin I/O, sin red, sin
-    estado mutable.
+    Determinism: all IDs are derived with ``uuid5(namespace, ...)``
+    from ``case_id``; the same input produces the same bundle.
+    The bundle ``timestamp`` is taken from ``audit.occurred_at`` to
+    guarantee determinism across calls.  No I/O, no network, no
+    mutable state.
     """
     case_id = result.case_id
     bundle_id = _id_for(case_id, "Bundle")
-    # Timestamp determinista: derivado del AuditEvent (no de ``now``),
-    # para que ``to_bundle`` sea puro entre llamadas.
+    # Deterministic timestamp: derived from the AuditEvent (not from ``now``),
+    # so that ``to_bundle`` is pure across calls.
     now = audit.occurred_at
 
     # Subject (Patient placeholder)
     patient, subject_urn = _build_minimal_patient(case_id)
 
-    # AuditEvent (necesitamos su urn para las referencias en DetectedIssue)
+    # AuditEvent (we need its urn for the references in DetectedIssue)
     audit_event = _build_audit_event(case_id, audit, subject_urn)
     audit_urn = _urn(audit_event["id"])
 
@@ -945,7 +945,7 @@ def to_bundle(
         case_id, result, subject_urn, now
     )
 
-    # DetectedIssue + Flag por cada red flag
+    # DetectedIssue + Flag for each red flag
     red_flag_resources: list[dict[str, Any]] = []
     for i, hit in enumerate(result.red_flag.hits):
         red_flag_resources.append(
@@ -957,7 +957,7 @@ def to_bundle(
             _build_flag(case_id, hit, i, subject_urn)
         )
 
-    # entries del bundle
+    # bundle entries
     entries: list[dict[str, Any]] = []
     for resource in (
         [patient, questionnaire, questionnaire_response, audit_event]
@@ -979,31 +979,31 @@ def to_bundle(
 
 
 def _js_number(n: float) -> str:
-    """Formatea un número igual que el ``JSON.stringify`` de ECMAScript.
+    """Formats a number exactly like ECMAScript's ``JSON.stringify``.
 
-    Necesario para que el frontend (que recomputa el hash con
-    ``JSON.stringify``) obtenga BYTES idénticos. La diferencia clave con
-    ``json.dumps`` de Python: un float entero (``5.0``) lo emite JS como
-    ``"5"`` (no ``"5.0"``), y ``NaN``/``Infinity`` como ``null``.
+    Needed so that the frontend (which recomputes the hash with
+    ``JSON.stringify``) gets identical BYTES. The key difference with
+    Python's ``json.dumps``: JS emits an integral float (``5.0``) as
+    ``"5"`` (not ``"5.0"``), and ``NaN``/``Infinity`` as ``null``.
     """
     if n != n or n in (float("inf"), float("-inf")):  # NaN / ±Inf → null (JS)
         return "null"
     if n == int(n) and abs(n) < 1e21:
         return str(int(n))
-    # Para valores fraccionarios, ``repr`` de Python coincide con el
-    # shortest-round-trip de ECMAScript en el rango de la demo.
+    # For fractional values, Python's ``repr`` matches ECMAScript's
+    # shortest-round-trip in the demo's value range.
     return repr(n)
 
 
 def _canonical_json(obj: Any) -> str:
-    """JSON canónico byte-idéntico al de ``jsonCanonical`` del frontend.
+    """Canonical JSON byte-identical to the frontend's ``jsonCanonical``.
 
-    Reglas (RFC 8785 / JCS, subset usado por el bundle):
-      - claves de objeto ordenadas (Unicode code point == UTF-16 para ASCII);
-      - sin espacios entre tokens;
-      - strings con el mismo escape que ``JSON.stringify`` (== ``json.dumps``
-        con ``ensure_ascii=False``);
-      - números con formato ECMAScript (ver ``_js_number``).
+    Rules (RFC 8785 / JCS, subset used by the bundle):
+      - object keys sorted (Unicode code point == UTF-16 for ASCII);
+      - no whitespace between tokens;
+      - strings with the same escaping as ``JSON.stringify`` (== ``json.dumps``
+        with ``ensure_ascii=False``);
+      - numbers in ECMAScript format (see ``_js_number``).
     """
     if obj is None:
         return "null"
@@ -1013,7 +1013,7 @@ def _canonical_json(obj: Any) -> str:
         return "false"
     if isinstance(obj, str):
         return _json.dumps(obj, ensure_ascii=False)
-    if isinstance(obj, bool):  # (ya cubierto arriba, defensa)
+    if isinstance(obj, bool):  # (already covered above, defensive)
         return "true" if obj else "false"
     if isinstance(obj, int):
         return str(obj)
@@ -1027,18 +1027,18 @@ def _canonical_json(obj: Any) -> str:
             for k, v in sorted(obj.items(), key=lambda kv: str(kv[0]))
         ]
         return "{" + ",".join(parts) + "}"
-    # Fallback (p.ej. datetime que no fue serializado aguas arriba).
+    # Fallback (e.g. a datetime not serialized upstream).
     return _json.dumps(str(obj), ensure_ascii=False)
 
 
 def bundle_sha256(bundle: dict[str, Any]) -> str:
-    """SHA-256 hex del JSON canónico del Bundle (tamper-evident).
+    """SHA-256 hex of the Bundle's canonical JSON (tamper-evident).
 
-    Mismo bundle → mismo hash; alteración → hash distinto.
-    El frontend recomputa el hash del bundle recibido con la MISMA
-    canonicalización (claves ordenadas, sin espacios, números formato
-    ECMAScript) y lo compara con este valor para verificar integridad
-    de forma independiente (✓ íntegro / ✗ alterado).
+    Same bundle → same hash; alteration → different hash.
+    The frontend recomputes the hash of the received bundle with the SAME
+    canonicalization (sorted keys, no whitespace, ECMAScript number
+    format) and compares it against this value to verify integrity
+    independently (✓ intact / ✗ altered).
     """
     canonical = _canonical_json(bundle)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

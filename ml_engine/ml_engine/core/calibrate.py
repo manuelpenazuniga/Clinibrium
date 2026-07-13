@@ -1,10 +1,11 @@
-"""Calibración honesta (temperature scaling del VECTOR FINAL) + ECE.
+"""Honest calibration (temperature scaling of the FINAL VECTOR) + ECE.
 
-Fix Codex/Gemini: se calibra el vector final de hojas (no cada nodo por
-separado), la temperatura se ajusta minimizando NLL en un split de calibración
-SEPARADO (sin leakage), y NO se impone ``ECE_after ≤ ECE_before`` como
-invariante (temperature minimiza NLL, no ECE; usarlo de test sería leakage). El
-ECE se REPORTA sobre test intacto, no se asserta como mejora.
+Codex/Gemini fix: the final leaf vector is calibrated (not each node
+separately), the temperature is fit by minimizing NLL on a SEPARATE
+calibration split (no leakage), and ``ECE_after ≤ ECE_before`` is NOT imposed
+as an invariant (temperature minimizes NLL, not ECE; using it as a test would
+be leakage). ECE is REPORTED on untouched test data, not asserted as an
+improvement.
 """
 from __future__ import annotations
 
@@ -61,7 +62,7 @@ def ece(
     leaves: tuple[str, ...],
     n_bins: int = 15,
 ) -> float:
-    """Expected Calibration Error (confianza del argmax vs accuracy, M bins)."""
+    """Expected Calibration Error (argmax confidence vs accuracy, M bins)."""
     p = _matrix(probs, leaves)
     conf = p.max(axis=1)
     pred = p.argmax(axis=1)

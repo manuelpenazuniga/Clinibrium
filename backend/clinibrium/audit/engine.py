@@ -1,7 +1,7 @@
-"""Construcción y emisión del AuditEvent (INV-4: exactamente 1 por invocación).
+"""AuditEvent construction and emission (INV-4: exactly 1 per invocation).
 
-`build_audit_event` es pura (sin I/O, sin `datetime.now()`).
-`emit` compone build + persistencia asíncrona.
+`build_audit_event` is pure (no I/O, no `datetime.now()`).
+`emit` composes build + async persistence.
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ from clinibrium.storage.persist import persist_audit
 
 
 def _features_hash(features: CaseFeatures) -> str:
-    """Hash sha256 del dict desidentificado (NO PII).
+    """sha256 hash of the de-identified dict (NO PII).
 
-    Usa `model_dump(mode="json")` con sort_keys para determinismo —
-    mismo enfoque que `build_network_payload` pero sin la validación
-    redundante del allowlist (CaseFeatures ya tiene extra=forbid).
+    Uses `model_dump(mode="json")` with sort_keys for determinism —
+    same approach as `build_network_payload` but without the redundant
+    allowlist validation (CaseFeatures already has extra=forbid).
     """
     payload = features.model_dump(mode="json")
     canonical = json.dumps(payload, sort_keys=True, default=str)
@@ -37,14 +37,14 @@ def build_audit_event(
     outcome: str,
     occurred_at: datetime,
 ) -> AuditEvent:
-    """Construye un AuditEvent inmutable. Función pura — sin I/O ni side-effects.
+    """Builds an immutable AuditEvent. Pure function — no I/O or side effects.
 
     Args:
-        result: PipelineResult sellado (post-rails).
-        features: CaseFeatures desidentificadas del caso.
-        reasoner_status: "ok" si el razonador respondió, "degraded" si no.
-        outcome: "evaluation" para pipeline normal, "error" para fallo.
-        occurred_at: timestamp inyectable (NO datetime.now() enterrado).
+        result: sealed PipelineResult (post-rails).
+        features: de-identified CaseFeatures of the case.
+        reasoner_status: "ok" if the reasoner answered, "degraded" if not.
+        outcome: "evaluation" for the normal pipeline, "error" for failure.
+        occurred_at: injectable timestamp (NO buried datetime.now()).
     """
     return AuditEvent(
         id=str(uuid.uuid4()),
@@ -82,10 +82,11 @@ async def emit(
     outcome: str,
     occurred_at: datetime,
 ) -> AuditEvent:
-    """Construye el AuditEvent, lo persiste (best-effort) y lo devuelve.
+    """Builds the AuditEvent, persists it (best-effort) and returns it.
 
-    INV-4: el evento se construye siempre. Si la persistencia falla, se
-    loguea y se sigue — el evento ya existe y es trazable.
+    INV-4: the event is always built. If persistence fails, it is
+    logged and execution continues — the event already exists and is
+    traceable.
     """
     event = build_audit_event(
         result,
@@ -105,12 +106,12 @@ async def emit_decision(
     reason: str | None = None,
     occurred_at: datetime | None = None,
 ) -> AuditEvent:
-    """Emite un AuditEvent de decisión clínica (AD-4, intervención humana).
+    """Emits a clinical-decision AuditEvent (AD-4, human intervention).
 
-    NO pasa por el pipeline de evaluación — es una acción posterior
-    separada que registra la intervención significativa del médico
-    (Ley 21.719).  Emite SU propio AuditEvent (no viola INV-4 que es
-    por-evaluación).
+    Does NOT go through the evaluation pipeline — it is a separate
+    subsequent action that records the physician's meaningful
+    intervention (Chilean Law 21.719). It emits ITS own AuditEvent
+    (does not violate INV-4, which is per-evaluation).
     """
     from datetime import datetime as _dt
     from datetime import timezone

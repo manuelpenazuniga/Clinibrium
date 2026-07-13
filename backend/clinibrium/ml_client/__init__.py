@@ -1,11 +1,11 @@
-"""Cliente de POST /predict (track B); degrada elegante.
+"""POST /predict client (track B); degrades gracefully.
 
-API pública:
+Public API:
     predict(features, *, timeout_s=2.0, base_url=None) -> PredictResponse | None
 
-Si el servicio B no está configurado, no responde, da error HTTP, o
-excede el timeout → devuelve `None` (NO levanta). El pipeline A
-completa igual (INV-6).
+If service B is not configured, does not answer, returns an HTTP error,
+or exceeds the timeout → returns `None` (does NOT raise). Pipeline A
+completes regardless (INV-6).
 """
 from __future__ import annotations
 

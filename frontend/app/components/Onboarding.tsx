@@ -9,7 +9,7 @@ import {
 } from "react";
 
 interface TourStep {
-  /** valor de data-tour del elemento a destacar; sin target = paso centrado */
+  /** data-tour value of the element to highlight; no target = centered step */
   target?: string;
   title: string;
   body: string;
@@ -73,7 +73,7 @@ export default function Onboarding({
     onClose();
   }, [onClose]);
 
-  // Sigue al elemento destacado (scroll/resize/reflow) con un rAF loop.
+  // Follow the highlighted element (scroll/resize/reflow) with a rAF loop.
   useEffect(() => {
     if (!open) return;
 

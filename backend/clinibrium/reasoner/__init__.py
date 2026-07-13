@@ -1,4 +1,4 @@
-"""Claude razonador: pick_model + RAG-grounded; explica, NO clasifica."""
+"""Claude reasoner: pick_model + RAG-grounded; it explains, does NOT classify."""
 from __future__ import annotations
 
 from clinibrium.reasoner.engine import reason

@@ -1,12 +1,12 @@
-"""`CaseFeatures`: ALLOWLIST estructurado de lo que cruza la red (INV-2).
+"""`CaseFeatures`: structured ALLOWLIST of what crosses the network (INV-2).
 
-Hoja del grafo `clinibrium.*`: este modelo NO contiene PII ni texto libre y
-NO importa nada de otros módulos de `clinibrium` fuera del propio paquete
-`clinibrium.contracts`.
+Leaf of the `clinibrium.*` graph: this model contains NO PII or free text and
+imports NOTHING from other `clinibrium` modules outside the
+`clinibrium.contracts` package itself.
 
-`NETWORK_SAFE_FIELDS` es la fuente de verdad del allowlist que consume el
-validador del reasoner (INV-2): rechaza cualquier payload que incluya campos
-fuera de este set (PII, texto libre, video, etc.).
+`NETWORK_SAFE_FIELDS` is the source of truth for the allowlist consumed by
+the reasoner validator (INV-2): it rejects any payload that includes fields
+outside this set (PII, free text, video, etc.).
 """
 from __future__ import annotations
 
@@ -27,26 +27,25 @@ from clinibrium.contracts.enums import (
 
 
 class CaseFeatures(BaseModel):
-    """Features estructuradas desidentificadas que cruzan la red.
+    """De-identified structured features that cross the network.
 
-    Todos los campos son opcionales salvo indicación; los defaults permiten
-    instanciar `CaseFeatures()` y rellenar progresivamente.
+    All fields are optional unless noted; the defaults allow instantiating
+    `CaseFeatures()` and filling it in progressively.
 
-    PROHIBIDO: nombre, RUT/DNI, fecha de nacimiento, dirección, notas libres,
-    texto libre, frames de video, identificadores de paciente. El validador
-    del reasoner debe rechazar cualquier payload que traiga campos fuera de
-    `NETWORK_SAFE_FIELDS`.
+    FORBIDDEN: name, RUT/DNI, date of birth, address, free-form notes,
+    free text, video frames, patient identifiers. The reasoner validator
+    must reject any payload carrying fields outside `NETWORK_SAFE_FIELDS`.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    # --- Temporal / gatillo ---
+    # --- Temporal / trigger ---
     duration: SymptomDuration | None = None
     onset: Onset | None = None
     trigger: Trigger | None = None
     timing_pattern: TimingPattern | None = None
 
-    # --- Nistagmo (bedside + on-device) ---
+    # --- Nystagmus (bedside + on-device) ---
     nystagmus_direction: NystagmusDirection = NystagmusDirection.none
     nystagmus_direction_changing_gaze: bool = False
     nystagmus_latency_s: float | None = None
@@ -58,7 +57,7 @@ class CaseFeatures(BaseModel):
     head_impulse: HeadImpulse = HeadImpulse.not_done
     skew_deviation: bool = False
 
-    # --- Audición ---
+    # --- Hearing ---
     hearing_loss: HearingLoss = HearingLoss.none
     tinnitus: bool = False
     aural_fullness: bool = False
@@ -69,11 +68,11 @@ class CaseFeatures(BaseModel):
     headache_neck_pain_sudden_severe: bool = False
     migrainous_features: bool = False
 
-    # --- Riesgo vascular ---
+    # --- Vascular risk ---
     age_years: int | None = None
     vascular_risk_factors: set[VascularRiskFactor] = set()
 
-    # --- Otras urgencias (Bloque B) ---
+    # --- Other emergencies (Block B) ---
     fever: bool = False
     neck_stiffness: bool = False
     altered_consciousness: bool = False
@@ -83,16 +82,16 @@ class CaseFeatures(BaseModel):
     otitis_mastoiditis: bool = False
     recent_head_neck_trauma: bool = False
 
-    # --- Contraindicaciones examen (Bloque C) ---
+    # --- Physical-exam contraindications (Block C) ---
     cervical_pathology: bool = False
     known_carotid_vertebrobasilar_disease: bool = False
     cardiovascular_instability: bool = False
 
-    # --- Posicional / torsión (Dix-Hallpike) ---
+    # --- Positional / torsion (Dix-Hallpike) ---
     dix_hallpike: DixHallpikeResult = DixHallpikeResult.not_done
     torsion_confirmed_by_clinician: bool | None = None
 
-    # --- Episódico (Ménière / MV) ---
+    # --- Episodic (Ménière / VM) ---
     episode_count: int | None = None
     episode_duration: SymptomDuration | None = None
 

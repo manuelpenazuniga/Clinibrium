@@ -1,4 +1,4 @@
-"""Construcción y emisión del AuditEvent (INV-4)."""
+"""AuditEvent construction and emission (INV-4)."""
 from __future__ import annotations
 
 from clinibrium.audit.engine import build_audit_event, emit, emit_decision

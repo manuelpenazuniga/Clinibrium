@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Trazo tipo nistagmo: deriva lenta + corrección rápida (sawtooth), como un
- * registro de video-oculografía. Puramente ilustrativo — no son datos.
+ * Nystagmus-like trace: slow drift + fast correction (sawtooth), like a
+ * video-oculography recording. Purely illustrative — not data.
  */
 export default function NystagmusTrace() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,8 +38,8 @@ export default function NystagmusTrace() {
     });
     observer.observe(canvas);
 
-    // Componente horizontal: fase lenta (82% del ciclo) / fase rápida (18%),
-    // ~0.9 Hz, amplitud modulada para que respire como señal biológica.
+    // Horizontal component: slow phase (82% of the cycle) / fast phase (18%),
+    // ~0.9 Hz, amplitude modulated so it breathes like a biological signal.
     const sampleH = (t: number) => {
       const beat = 1.15;
       const p = ((t % beat) + beat) % beat / beat;

@@ -1,21 +1,21 @@
-"""Interfaz `Grounding` + tipo `GroundingChunk`.
+"""`Grounding` interface + `GroundingChunk` type.
 
-AD-10: el reasoner consume grounding **vía interfaz** (no pgvector
-directo). Esto permite que la implementación degrade elegante a
-`InlineGrounding` cuando pgvector no está disponible, sin que el
-reasoner tenga que conocer el detalle de la implementación.
+AD-10: the reasoner consumes grounding **via an interface** (not pgvector
+directly). This lets the implementation degrade gracefully to
+`InlineGrounding` when pgvector is unavailable, without the reasoner
+having to know the implementation detail.
 
-Reglas de diseño:
+Design rules:
 
-- `GroundingChunk.text` es siempre **paráfrasis propia** del equipo
-  (AD-5). No se acepta texto verbatim de ICVD.
-- `GroundingChunk.diagnosis` es opcional: un chunk puede ser genérico
-  (p.ej. "red flags en AVS") o específico de un diagnóstico.
-- `GroundingChunk.source_id` identifica al chunk para trazabilidad
-  (AuditEvent, debugging, evaluación de retrieval). Convención:
-  `clinibrium-paraphrase:<diagnóstico>-<n>`.
-- `Grounding.retrieve(...)` es **determinista** para una misma
-  `(candidates, features, k)`. Sin random, sin reloj.
+- `GroundingChunk.text` is always the team's **own paraphrase**
+  (AD-5). Verbatim ICVD text is not accepted.
+- `GroundingChunk.diagnosis` is optional: a chunk can be generic
+  (e.g. "red flags in AVS") or specific to a diagnosis.
+- `GroundingChunk.source_id` identifies the chunk for traceability
+  (AuditEvent, debugging, retrieval evaluation). Convention:
+  `clinibrium-paraphrase:<diagnosis>-<n>`.
+- `Grounding.retrieve(...)` is **deterministic** for the same
+  `(candidates, features, k)`. No randomness, no clock.
 """
 from __future__ import annotations
 
@@ -27,14 +27,14 @@ from clinibrium.contracts import CaseFeatures, Diagnosis, DifferentialResult
 
 
 class GroundingChunk(BaseModel):
-    """Snippet de criterio clínico (paráfrasis propia) que el reasoner
-    consume como contexto.
+    """Clinical criterion snippet (own paraphrase) consumed by the
+    reasoner as context.
 
-    Atributos:
-        text:        Paráfrasis ORIGINAL del equipo (NO verbatim ICVD).
-        diagnosis:   Diagnóstico al que aplica (None = genérico / cross-cutting).
-        source_id:   Identificador trazable del chunk. Convención:
-                     `clinibrium-paraphrase:<diagnóstico>-<n>`.
+    Attributes:
+        text:        The team's ORIGINAL paraphrase (NOT verbatim ICVD).
+        diagnosis:   Diagnosis it applies to (None = generic / cross-cutting).
+        source_id:   Traceable chunk identifier. Convention:
+                     `clinibrium-paraphrase:<diagnosis>-<n>`.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -45,12 +45,12 @@ class GroundingChunk(BaseModel):
 
 
 class Grounding(Protocol):
-    """Protocol de retrieval de chunks de criterios.
+    """Protocol for criteria chunk retrieval.
 
-    Una implementación (`InlineGrounding`, `PgvectorGrounding`) devuelve
-    hasta `k` chunks relevantes para los diagnósticos candidatos de un
-    `DifferentialResult`, opcionalmente ponderados por las features
-    presentes en el caso.
+    An implementation (`InlineGrounding`, `PgvectorGrounding`) returns
+    up to `k` chunks relevant to the candidate diagnoses of a
+    `DifferentialResult`, optionally weighted by the features present
+    in the case.
     """
 
     def retrieve(

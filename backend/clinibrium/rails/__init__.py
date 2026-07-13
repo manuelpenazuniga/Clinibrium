@@ -1,4 +1,4 @@
-"""Invariantes duras aplicadas DESPUÉS de Claude; ganan siempre."""
+"""Hard invariants applied AFTER Claude; they always win."""
 from __future__ import annotations
 
 from clinibrium.rails.engine import apply_rails

@@ -1,7 +1,7 @@
-"""`AuditEvent`: evento inmutable de auditoría (INV-4).
+"""`AuditEvent`: immutable audit event (INV-4).
 
-Hoja: este modelo NO importa nada de `clinibrium.*` salvo dentro del propio
-paquete `clinibrium.contracts`.
+Leaf: this model imports NOTHING from `clinibrium.*` except within the
+`clinibrium.contracts` package itself.
 """
 from __future__ import annotations
 
@@ -18,13 +18,13 @@ class AuditEvent(BaseModel):
 
     id: str
     occurred_at: datetime
-    event_type: str  # p.ej. "pipeline_evaluation"
+    event_type: str  # e.g. "pipeline_evaluation"
     actor: ActorType = ActorType.system
     model_used: str | None = None
-    input_features_hash: str  # hash de las features estructuradas (NO del PII)
+    input_features_hash: str  # hash of the structured features (NOT of PII)
     urgency: Urgency
     forced_actions: list[ForcedAction] = []
     red_flag_activa: bool
     outcome_summary: str
-    reasoner_status: Literal["ok", "degraded"] = "ok"  # marcador INV-8
+    reasoner_status: Literal["ok", "degraded"] = "ok"  # INV-8 marker
     outcome: str = "evaluation"

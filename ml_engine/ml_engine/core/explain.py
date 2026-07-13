@@ -1,14 +1,14 @@
-"""Explicabilidad SHAP LOCAL de un solo nodo (TB1.6, acotado).
+"""LOCAL SHAP explainability for a single node (TB1.6, bounded).
 
-Fix Codex/Gemini: NO se agregan valores SHAP a través de los nodos del árbol
-(rompe la aditividad — cada nodo tiene su propio baseline/escala logit). Se
-explica UN nodo: el **gate de peligro** (``dangerous vs peripheral``), que es la
-decisión más relevante. TreeSHAP exacto de CatBoost sobre el score crudo (logit)
-de la clase "dangerous": contribución positiva ⇒ empuja hacia peligro.
+Codex/Gemini fix: SHAP values are NOT aggregated across the tree's nodes (it
+breaks additivity — each node has its own baseline/logit scale). ONE node is
+explained: the **danger gate** (``dangerous vs peripheral``), which is the
+most relevant decision. Exact CatBoost TreeSHAP on the raw score (logit) of
+the "dangerous" class: positive contribution ⇒ pushes toward danger.
 
-HONESTIDAD (AD-17): sobre datos sintéticos esto explica el GENERADOR, no
-causalidad clínica. Se presenta como "atribución local, no causal, sobre el
-generador sintético".
+HONESTY (AD-17): on synthetic data this explains the GENERATOR, not clinical
+causality. It is presented as "local, non-causal attribution over the
+synthetic generator".
 """
 from __future__ import annotations
 
@@ -23,16 +23,15 @@ def top_shap_for_node(
     *,
     top_k: int = 6,
 ) -> dict[str, float]:
-    """Top-k contribuciones SHAP (por |valor|) de UN nodo binario, una fila.
+    """Top-k SHAP contributions (by |value|) of ONE binary node, one row.
 
-    Devuelve ``{feature: contribución_al_logit_de_dangerous}``. Se descarta la
-    última columna (expected value / base). Para un modelo binario Logloss el
-    SHAP es sobre el score crudo de la clase positiva (= dangerous, por diseño
-    del gate).
+    Returns ``{feature: contribution_to_dangerous_logit}``. The last column
+    (expected value / base) is discarded. For a binary Logloss model the SHAP
+    is over the raw score of the positive class (= dangerous, by gate design).
     """
     pool = Pool(x_row, cat_features=cat_features)
     values = cb_model.get_feature_importance(pool, type="ShapValues")
-    contribs = values[0][:-1]  # última columna = expected value (base)
+    contribs = values[0][:-1]  # last column = expected value (base)
     pairs = sorted(
         zip(feature_names, contribs, strict=True), key=lambda kv: -abs(kv[1])
     )

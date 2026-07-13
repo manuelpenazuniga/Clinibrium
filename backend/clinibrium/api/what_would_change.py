@@ -1,8 +1,9 @@
-"""Endpoint `POST /api/what-would-change` — análisis contrafactual determinista.
+"""`POST /api/what-would-change` endpoint — deterministic counterfactual analysis.
 
-Toma un `CaseFeatures` base y devuelve qué ÚNICO hallazgo cambiaría el manejo
-(urgencia / acciones forzadas), verificado por el núcleo determinista
-(RedFlagEngine + rails). El LLM NO participa (INV-3): son contrafactuales duros.
+Takes a base `CaseFeatures` and returns which SINGLE finding would change the
+management (urgency / forced actions), verified by the deterministic core
+(RedFlagEngine + rails). The LLM does NOT participate (INV-3): these are hard
+counterfactuals.
 """
 from __future__ import annotations
 
@@ -18,9 +19,9 @@ router = APIRouter()
 
 @router.post("/api/what-would-change")
 async def what_would_change(features: CaseFeatures) -> dict[str, Any]:
-    """¿Qué único hallazgo cambiaría el manejo de este paciente?
+    """Which single finding would change the management of this patient?
 
-    Body: `CaseFeatures` (Pydantic valida → 422 si inválido/extra).
+    Body: `CaseFeatures` (Pydantic validates → 422 if invalid/extra fields).
     Response: `{base_urgency, counterfactuals[], minimal_escalation}`.
     """
     return analyze(features).to_dict()

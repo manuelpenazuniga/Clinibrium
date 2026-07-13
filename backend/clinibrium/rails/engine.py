@@ -1,14 +1,14 @@
-"""Rieles deterministas — la red dura que se aplica DESPUÉS de Claude.
+"""Deterministic rails — the hard safety net applied AFTER Claude.
 
-Cada riel es una función pura. `apply_rails` los compone en orden.
-El LLM nunca fija urgencia vinculante (INV-3); los rieles ganan siempre.
+Each rail is a pure function. `apply_rails` composes them in order.
+The LLM never sets binding urgency (INV-3); the rails always win.
 
-INV-1 : red_flag_activa == True ⇒ urgencia = inmediata
-INV-3 : urgencia NUNCA del LLM, siempre de capas deterministas
-INV-5 : rails PROHIBIDO importar reasoner/redflag_engine/differential_engine/
-        ml_client/orchestrator/api (solo contracts)
-INV-7 : monotonía de seguridad (solo SUBE urgencia), idempotencia, totalidad,
-        trazabilidad
+INV-1 : red_flag_activa == True ⇒ urgency = inmediata
+INV-3 : urgency NEVER comes from the LLM, always from deterministic layers
+INV-5 : rails are FORBIDDEN from importing reasoner/redflag_engine/
+        differential_engine/ml_client/orchestrator/api (contracts only)
+INV-7 : safety monotonicity (urgency only goes UP), idempotence, totality,
+        traceability
 """
 from __future__ import annotations
 
@@ -23,16 +23,16 @@ from clinibrium.rails.thresholds import (
 )
 
 _RailResult = tuple[set[ForcedAction], str | None]
-"""Cada riel devuelve (forced_actions_que_agrega, rail_id_si_disparó)."""
+"""Each rail returns (forced_actions_it_adds, rail_id_if_fired)."""
 
 
 def _rail_inv1(result: PipelineResult, _features: CaseFeatures) -> _RailResult:
-    """R-INV1: red flag gana — urgencia inmediata, propaga forced_actions."""
+    """R-INV1: red flag wins — immediate urgency, propagates forced_actions."""
     if result.red_flag.red_flag_activa:
         actions = set(result.red_flag.forced_actions)
-        # red_flag_activa ⇒ derivación urgente forzada por definición del RedFlagEngine.
-        # Lo re-aseguramos acá (defensivo + trazabilidad INV-7): R-INV1 siempre queda
-        # registrado y DERIVAR_URGENTE presente aunque forced_actions viniera vacío.
+        # red_flag_activa ⇒ urgent referral forced by definition of the RedFlagEngine.
+        # We re-assert it here (defensive + INV-7 traceability): R-INV1 is always
+        # recorded and DERIVAR_URGENTE present even if forced_actions came in empty.
         actions.add(ForcedAction.DERIVAR_URGENTE)
         return actions, "R-INV1"
     return set(), None
@@ -41,12 +41,12 @@ def _rail_inv1(result: PipelineResult, _features: CaseFeatures) -> _RailResult:
 def _rail_epley_d(
     result: PipelineResult, features: CaseFeatures, accumulated_forced: set[ForcedAction]
 ) -> _RailResult:
-    """R-EPLEY-D: Bloque D — cuándo NO recomendar Epley."""
+    """R-EPLEY-D: Block D — when NOT to recommend Epley."""
     actions: set[ForcedAction] = set()
 
     red_flag_activa = result.red_flag.red_flag_activa
-    # Chequeo directo de contraindicaciones de examen (defensivo): no dependemos solo
-    # de que RedFlagEngine ya haya propagado PRECAUCION_EXAMEN en accumulated_forced.
+    # Direct check of exam contraindications (defensive): we do not rely solely
+    # on RedFlagEngine having already propagated PRECAUCION_EXAMEN into accumulated_forced.
     precaucion_presente = (
         ForcedAction.PRECAUCION_EXAMEN in accumulated_forced
         or features.cervical_pathology
@@ -80,7 +80,7 @@ def _rail_epley_d(
         in {
             NystagmusDirection.vertical_pure,
             NystagmusDirection.torsional_pure,
-            NystagmusDirection.direction_changing,  # signo central: bloquear Epley
+            NystagmusDirection.direction_changing,  # central sign: block Epley
         }
         or features.nystagmus_direction_changing_gaze
     )
@@ -111,7 +111,7 @@ def _rail_epley_d(
 
 
 def _rail_e2(result: PipelineResult, _features: CaseFeatures) -> _RailResult:
-    """R-E2: epistémico — incertidumbre ⇒ ESCALAR (fail-safe)."""
+    """R-E2: epistemic — uncertainty ⇒ ESCALAR (fail-safe)."""
     candidates = result.differential.candidates
     if not candidates:
         return {ForcedAction.ESCALAR}, "R-E2"
@@ -134,11 +134,11 @@ def _rail_divergencia(
     _features: CaseFeatures,
     current_deterministic_urgency: Urgency,
 ) -> _RailResult:
-    """R-DIVERGENCIA: reasoner sugiere más urgencia que la determinista.
+    """R-DIVERGENCIA: reasoner suggests higher urgency than the deterministic one.
 
-    INV-3: NUNCA adoptamos el valor del LLM. Si el reasoner sugiere
-    más urgencia, respondemos con ESCALAR (determinista), no con el
-    valor del LLM.  Si sugiere menor o igual, se ignora.
+    INV-3: we NEVER adopt the LLM's value. If the reasoner suggests
+    higher urgency, we respond with ESCALAR (deterministic), not with
+    the LLM's value.  If it suggests lower or equal, it is ignored.
     """
     if result.reasoning is None:
         return set(), None
@@ -158,12 +158,12 @@ def _compute_urgency(
     forced_actions: set[ForcedAction],
     current_urgency: Urgency,
 ) -> Urgency:
-    """Calcula la urgencia final a partir de forced_actions acumuladas.
+    """Computes the final urgency from the accumulated forced_actions.
 
-    Solo `DERIVAR_URGENTE` / `red_flag_activa` fijan `inmediata`;
-    solo `ESCALAR` fija `prioritaria`; el resto no fija urgencia.
-    Siempre devuelve un valor (totalidad → default ambulatoria).
-    Monotonía: nunca baja respecto de `current_urgency`.
+    Only `DERIVAR_URGENTE` / `red_flag_activa` set `inmediata`;
+    only `ESCALAR` sets `prioritaria`; the rest do not set urgency.
+    Always returns a value (totality → default ambulatoria).
+    Monotonicity: never goes below `current_urgency`.
     """
     urgency: Urgency = Urgency.ambulatoria
 
@@ -177,17 +177,17 @@ def _compute_urgency(
 
 
 def apply_rails(result: PipelineResult, features: CaseFeatures) -> PipelineResult:
-    """Aplica todos los rieles deterministas y devuelve un PipelineResult sellado.
+    """Applies all deterministic rails and returns a sealed PipelineResult.
 
-    NO muta `result` ni `features`.  Cada riel agrega forced_actions y su
-    id a `applied_rails`.  La urgencia final se calcula a partir de las
-    forced_actions acumuladas con monotonía garantizada (INV-7).
+    Does NOT mutate `result` or `features`.  Each rail adds forced_actions
+    and its id to `applied_rails`.  The final urgency is computed from the
+    accumulated forced_actions with guaranteed monotonicity (INV-7).
 
-    Orden de aplicación:
-      1. R-INV1 — red flag gana
-      2. R-EPLEY-D — bloque D (NO Epley)
-      3. R-E2 — epistémico (incertidumbre ⇒ ESCALAR)
-      4. R-DIVERGENCIA — divergencia reasoner vs determinista
+    Application order:
+      1. R-INV1 — red flag wins
+      2. R-EPLEY-D — block D (NO Epley)
+      3. R-E2 — epistemic (uncertainty ⇒ ESCALAR)
+      4. R-DIVERGENCIA — reasoner vs deterministic divergence
     """
     forced_actions: set[ForcedAction] = set(result.forced_actions)
     applied_rails: list[str] = list(result.applied_rails)

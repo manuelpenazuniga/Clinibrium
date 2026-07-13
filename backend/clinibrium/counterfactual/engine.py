@@ -1,15 +1,16 @@
-"""Motor contrafactual determinista (What Would Change My Mind?).
+"""Deterministic counterfactual engine (What Would Change My Mind?).
 
-Para un caso base, aplica perturbaciones de UNA sola variable (allowlisted,
-clínicamente revisadas) y corre cada variante por el núcleo DETERMINISTA
-(RedFlagEngine + DifferentialEngine + rails). Devuelve los cambios mínimos que
-alteran la urgencia o las acciones forzadas, con el riel que disparó.
+For a base case, applies SINGLE-variable perturbations (allowlisted,
+clinically reviewed) and runs each variant through the DETERMINISTIC core
+(RedFlagEngine + DifferentialEngine + rails). Returns the minimal changes that
+alter the urgency or the forced actions, with the rail that fired.
 
-Principio rector (INV-3): el LLM NO decide qué es urgente. El core determinista
-sella la urgencia de cada contrafactual; Claude (aguas arriba) solo los explica.
+Guiding principle (INV-3): the LLM does NOT decide what is urgent. The
+deterministic core seals the urgency of each counterfactual; Claude
+(upstream) only explains them.
 
-Grafo de imports: counterfactual → engines + rails + contracts (como el
-orchestrator). NO importa reasoner/ml/audit (es análisis puro, sin efectos).
+Import graph: counterfactual → engines + rails + contracts (like the
+orchestrator). Does NOT import reasoner/ml/audit (pure analysis, no effects).
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ from clinibrium.differential_engine import evaluate as differential_evaluate
 from clinibrium.rails import apply_rails
 from clinibrium.redflag_engine import evaluate as redflag_evaluate
 
-# Orden de severidad para rankear escalamientos.
+# Severity order used to rank escalations.
 _URGENCY_RANK: dict[Urgency, int] = {
     Urgency.ambulatoria: 0,
     Urgency.prioritaria: 1,
@@ -41,11 +42,12 @@ _URGENCY_RANK: dict[Urgency, int] = {
 class _Perturbation:
     field: str
     value: Any
-    label: str  # descripción humana del cambio de UNA variable
+    label: str  # human-readable description of the SINGLE-variable change (UI-facing, Spanish)
 
 
-# Perturbaciones de UNA sola variable, clínicamente significativas (mapean a rieles).
-# TODO(clinical): lista provisional a confirmar/expandir con el especialista (T-CLIN r2).
+# SINGLE-variable perturbations, clinically meaningful (they map to rails).
+# Labels are returned through the API and shown to the clinician — keep Spanish.
+# TODO(clinical): provisional list to confirm/expand with the specialist (T-CLIN r2).
 _PERTURBATIONS: tuple[_Perturbation, ...] = (
     _Perturbation("focal_signs", {FocalSign.diplopia}, "Nuevo signo focal: diplopía"),
     _Perturbation("focal_signs", {FocalSign.dysarthria}, "Nuevo signo focal: disartria"),
@@ -81,11 +83,11 @@ _PERTURBATIONS: tuple[_Perturbation, ...] = (
 @dataclass
 class Counterfactual:
     feature: str
-    change: str  # descripción humana
+    change: str  # human-readable description
     base_urgency: str
     new_urgency: str
     urgency_changed: bool
-    escalates: bool  # new_urgency más urgente que base
+    escalates: bool  # new_urgency more urgent than base
     forced_actions_added: list[str]
     rails_fired: list[str]
 
@@ -109,7 +111,7 @@ class WhatWouldChangeResult:
 
     @property
     def minimal_escalation(self) -> Counterfactual | None:
-        """El contrafactual escalante de MENOR urgencia final (el 'mínimo cambio')."""
+        """The escalating counterfactual with the LOWEST final urgency (the 'minimal change')."""
         escalating = [c for c in self.counterfactuals if c.escalates]
         if not escalating:
             return None
@@ -128,7 +130,7 @@ class WhatWouldChangeResult:
 def _deterministic_seal(
     features: CaseFeatures,
 ) -> tuple[Urgency, set[str], list[str]]:
-    """Corre SOLO el núcleo determinista (redflag → differential → rails)."""
+    """Runs ONLY the deterministic core (redflag → differential → rails)."""
     red_flag = redflag_evaluate(features)
     differential = differential_evaluate(features)
     prelim = PipelineResult(
@@ -149,16 +151,16 @@ def _current_value(features: CaseFeatures, pert: _Perturbation) -> Any:
 
 
 def _is_noop(features: CaseFeatures, pert: _Perturbation) -> bool:
-    """True si la perturbación no cambia nada (el caso ya tiene ese valor)."""
+    """True if the perturbation changes nothing (the case already has that value)."""
     current = _current_value(features, pert)
     if isinstance(pert.value, set):
-        # focal_signs: no-op si el signo ya está presente
+        # focal_signs: no-op if the sign is already present
         return bool(pert.value) and pert.value.issubset(current or set())
     return current == pert.value
 
 
 def analyze(features: CaseFeatures) -> WhatWouldChangeResult:
-    """Análisis contrafactual: qué único hallazgo cambia el manejo."""
+    """Counterfactual analysis: which single finding changes the management."""
     base_urgency, base_actions, _ = _deterministic_seal(features)
     base_rank = _URGENCY_RANK[base_urgency]
 
@@ -166,7 +168,7 @@ def analyze(features: CaseFeatures) -> WhatWouldChangeResult:
     for pert in _PERTURBATIONS:
         if _is_noop(features, pert):
             continue
-        # cambio de UNA sola variable (fix P1.1: exactamente una feature)
+        # SINGLE-variable change (fix P1.1: exactly one feature)
         cf_features = features.model_copy(update={pert.field: pert.value})
         new_urgency, new_actions, rails = _deterministic_seal(cf_features)
         actions_added = sorted(new_actions - base_actions)
@@ -186,11 +188,11 @@ def analyze(features: CaseFeatures) -> WhatWouldChangeResult:
             )
         )
 
-    # ordenar por urgencia final desc (los que escalan a inmediata primero)
+    # sort by final urgency desc (those escalating to inmediata first)
     out.sort(key=lambda c: _URGENCY_RANK[Urgency(c.new_urgency)], reverse=True)
     return WhatWouldChangeResult(base_urgency=base_urgency.value, counterfactuals=out)
 
 
 def analyze_from_mapping(payload: Mapping[str, Any]) -> WhatWouldChangeResult:
-    """Helper: valida el payload como CaseFeatures y analiza."""
+    """Helper: validates the payload as CaseFeatures and analyzes it."""
     return analyze(CaseFeatures.model_validate(payload))

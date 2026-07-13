@@ -1,4 +1,4 @@
-"""Configuración runtime: Settings leídos de variables de entorno (pydantic-settings)."""
+"""Runtime configuration: Settings read from environment variables (pydantic-settings)."""
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,18 +15,18 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://clinibrium:clinibrium@localhost:5432/clinibrium"
     ANTHROPIC_API_KEY: str = ""
 
-    # Track B (ML) — opcional. Si es None, `ml_client.predict()` degrada a
-    # None inmediatamente y el pipeline A sigue funcionando sin B (INV-6).
+    # Track B (ML) — optional. If None, `ml_client.predict()` degrades to
+    # None immediately and pipeline A keeps working without B (INV-6).
     ML_PREDICT_URL: str | None = None
     ML_PREDICT_TIMEOUT_S: float = 2.0
 
-    # Audit persistence — best-effort JSONL fallback cuando Postgres no está.
+    # Audit persistence — best-effort JSONL fallback when Postgres is unavailable.
     AUDIT_LOG_PATH: str = "./audit_events.jsonl"
 
-    # AD-6 / regla dura 2: recording_mode es server-side. NUNCA se toma del
-    # body del request — se fija acá (env / .env) y se pasa a orchestrator.
-    # Default False: ambulatorio usa Haiku 4.5 (costo); True fuerza Opus 4.8
-    # para demos / gold-set evaluation.
+    # AD-6 / hard rule 2: recording_mode is server-side. It is NEVER taken
+    # from the request body — it is set here (env / .env) and passed to the
+    # orchestrator. Default False: ambulatory uses Haiku 4.5 (cost); True
+    # forces Opus 4.8 for demos / gold-set evaluation.
     RECORDING_MODE: bool = False
 
 

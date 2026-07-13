@@ -1,4 +1,4 @@
-"""TB1.7 + TB1.10a — servicio /predict validado + contrato black-box (sin importar A)."""
+"""TB1.7 + TB1.10a — validated /predict service + black-box contract (without importing A)."""
 import json
 import os
 
@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from ml_engine.service.app import app, reset_model_cache
 from ml_engine.train import build_and_save
 
-# Shape del contrato CONGELADO (espejo LITERAL de clinibrium.contracts.PredictResponse,
-# SIN importar A — AD-16). Si A cambiara el contrato, este literal debe actualizarse.
+# Shape of the FROZEN contract (LITERAL mirror of clinibrium.contracts.PredictResponse,
+# WITHOUT importing A — AD-16). If A ever changed the contract, this literal must be updated.
 _FROZEN_CONTRACT_KEYS = {"probabilities", "shap", "model_version"}
 
 
@@ -36,7 +36,7 @@ def test_predict_matches_frozen_contract_shape(client: TestClient) -> None:
     assert set(data) == _FROZEN_CONTRACT_KEYS
     assert isinstance(data["probabilities"], dict)
     assert abs(sum(data["probabilities"].values()) - 1.0) < 1e-3
-    # shap: None o dict feature→float (TB1.6, opcional por contrato)
+    # shap: None or dict feature→float (TB1.6, optional per contract)
     assert data["shap"] is None or (
         isinstance(data["shap"], dict)
         and all(isinstance(v, float) for v in data["shap"].values())
@@ -52,7 +52,7 @@ def test_INV11_response_has_no_urgency(client: TestClient) -> None:
 
 
 def test_extra_keys_rejected_privacy_frontier(client: TestClient) -> None:
-    """Una clave fuera del allowlist (p.ej. PII) → 422 (no la acepta)."""
+    """A key outside the allowlist (e.g. PII) → 422 (not accepted)."""
     r = client.post("/predict", json={"trigger": "spontaneous", "patient_name": "Juan Pérez"})
     assert r.status_code == 422
     assert "patient_name" in r.json()["detail"]
@@ -68,7 +68,7 @@ def test_realistic_central_case(client: TestClient) -> None:
     r = client.post("/predict", json=body)
     assert r.status_code == 200
     probs = r.json()["probabilities"]
-    # las 9 claves del vocabulario (8 hojas + undetermined)
+    # the 9 vocabulary keys (8 leaves + undetermined)
     assert "undetermined" in probs and len(probs) == 9
     p_danger = probs["central_suspected"] + probs["cardiogenic_suspected"]
     assert p_danger > 0.5

@@ -52,9 +52,9 @@ export interface StreamOptions {
 }
 
 /**
- * POST /api/evaluate (SSE) — emite cada stage via onStage y resuelve con el
- * PipelineResult del evento `done`. Lanza en `error` o si el stream cierra
- * sin resultado.
+ * POST /api/evaluate (SSE) — emits each stage via onStage and resolves with
+ * the PipelineResult from the `done` event. Throws on `error` or if the
+ * stream closes without a result.
  */
 export async function streamEvaluation(
   features: CaseFeatures,

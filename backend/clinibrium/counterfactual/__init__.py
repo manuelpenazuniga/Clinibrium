@@ -1,8 +1,9 @@
-"""What Would Change My Mind? — análisis contrafactual determinista.
+"""What Would Change My Mind? — deterministic counterfactual analysis.
 
-Explicabilidad contrafactual clínica: ¿qué ÚNICO hallazgo cambiaría el manejo de
-este paciente? El LLM NO decide — el núcleo determinista (RedFlagEngine + rails)
-verifica cada contrafactual y Claude (opcional) solo lo explica (INV-3).
+Clinical counterfactual explainability: which SINGLE finding would change the
+management of this patient? The LLM does NOT decide — the deterministic core
+(RedFlagEngine + rails) verifies each counterfactual and Claude (optional)
+only explains it (INV-3).
 """
 from clinibrium.counterfactual.engine import (
     Counterfactual,

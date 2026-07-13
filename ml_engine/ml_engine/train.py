@@ -1,11 +1,11 @@
-"""CLI de entrenamiento (TB1.8/1.4/1.5): genera → entrena → calibra → abstención → evalúa → guarda.
+"""Training CLI (TB1.8/1.4/1.5): generate → train → calibrate → abstention → evaluate → save.
 
-Split 3-vías train/calibración/test (sin leakage): el modelo se ajusta en train,
-la temperatura y el umbral de abstención en calibración, y las métricas (incl.
-ECE) se reportan UNA vez sobre test intacto.
+3-way train/calibration/test split (no leakage): the model is fit on train,
+the temperature and the abstention threshold on calibration, and the metrics
+(incl. ECE) are reported ONCE on untouched test data.
 
-Las métricas miden RECUPERACIÓN DEL PROCESO GENERATIVO sintético (AD-17), NO
-desempeño clínico. Escribe artifacts (modelos + calibración + manifest) + MODEL_CARD.
+The metrics measure RECOVERY OF THE synthetic GENERATIVE PROCESS (AD-17), NOT
+clinical performance. Writes artifacts (models + calibration + manifest) + MODEL_CARD.
 """
 from __future__ import annotations
 
@@ -30,20 +30,20 @@ class Metrics:
     n_test: int
     leaf_accuracy: float
     gate_accuracy: float
-    danger_recall: float  # P(pred peligro | verdadero peligro) — el que importa
+    danger_recall: float  # P(pred danger | true danger) — the one that matters
     ece_raw: float
     ece_calibrated: float
     abstain_rate: float
     temperature: float
     abstain_threshold: float
-    # Stress set: mismos priors pero 40% de features faltantes (robustez a
-    # inputs reales muy esparsos).
+    # Stress set: same priors but 40% of features missing (robustness to very
+    # sparse real inputs).
     stress_leaf_accuracy: float
     stress_abstain_rate: float
 
 
 def _leaf_acc_abstain(model: HierarchicalCatBoost, df, domain: Domain) -> tuple[float, float]:
-    """(leaf_accuracy, abstain_rate) sobre un DataFrame — reusable para stress."""
+    """(leaf_accuracy, abstain_rate) over a DataFrame — reusable for stress."""
     rows = df.to_dict("records")
     y = [str(r["label"]) for r in rows]
     raw = model.predict_proba(rows)
@@ -118,7 +118,7 @@ def train_domain(
 
     model = HierarchicalCatBoost.train(domain, train_df, seed=seed, params=params)
 
-    # calibración + abstención en el split de calibración (sin tocar test)
+    # calibration + abstention on the calibration split (test untouched)
     leaves = domain.hierarchy.leaves
     cal_rows = cal_df.to_dict("records")
     raw_cal = model.predict_proba(cal_rows)
@@ -131,7 +131,7 @@ def train_domain(
         abstain_label=domain.hierarchy.abstain_label,
     )
 
-    # stress set: mismos priors, 40% de features faltantes (robustez a esparsos)
+    # stress set: same priors, 40% of features missing (robustness to sparse inputs)
     stress_spec = dataclasses.replace(
         spec, n_samples=min(1500, spec.n_samples), missing_rate=0.40, seed=spec.seed + 1
     )
@@ -141,47 +141,47 @@ def train_domain(
 
 
 def _write_model_card(out: Path, model: HierarchicalCatBoost, m: Metrics, domain: Domain) -> None:
-    card = f"""# MODEL CARD — `ml_engine` capa de confianza ({domain.name})
+    card = f"""# MODEL CARD — `ml_engine` confidence layer ({domain.name})
 
-> **EXPERIMENTAL · entrenado sobre datos 100% SINTÉTICOS · SIN validez clínica.**
+> **EXPERIMENTAL · trained on 100% SYNTHETIC data · NO clinical validity.**
 
 - **model_version:** `{model.model_version}`
-- **Arquitectura:** CatBoost jerárquico (LCPN). Gate raíz binario
-  `dangerous vs peripheral` con `monotone_constraints=+1` en features de riesgo
-  (INV-9: subir una feature de riesgo nunca baja P(dangerous), garantía dura del
-  gate pre-abstención). Hijos: central/cardiogénico, periférico (5), BPPV (2).
-- **Calibración:** temperature scaling del vector final, T={m.temperature:.3f}
-  (ajustada en split de calibración por NLL). **Abstención:** gate de confianza
-  τ={m.abstain_threshold:.3f} (cobertura objetivo {_TARGET_COVERAGE:.0%}) →
-  `undetermined` como centinela (INV-10).
-- **Features:** {len(domain.features.feature_names)} ({len(domain.features.categorical_names)} categóricas +
-  {len(domain.features.numeric_feature_names)} numéricas, incl. {len(domain.features.derived)} derivadas).
-- **Risk features (monótonas):** {", ".join(domain.features.risk_features)}.
+- **Architecture:** hierarchical CatBoost (LCPN). Binary root gate
+  `dangerous vs peripheral` with `monotone_constraints=+1` on risk features
+  (INV-9: raising a risk feature never lowers P(dangerous), hard guarantee of
+  the pre-abstention gate). Children: central/cardiogenic, peripheral (5), BPPV (2).
+- **Calibration:** temperature scaling of the final vector, T={m.temperature:.3f}
+  (fit on the calibration split by NLL). **Abstention:** confidence gate
+  τ={m.abstain_threshold:.3f} (target coverage {_TARGET_COVERAGE:.0%}) →
+  `undetermined` as sentinel (INV-10).
+- **Features:** {len(domain.features.feature_names)} ({len(domain.features.categorical_names)} categorical +
+  {len(domain.features.numeric_feature_names)} numeric, incl. {len(domain.features.derived)} derived).
+- **Risk features (monotone):** {", ".join(domain.features.risk_features)}.
 
-## Métricas (recuperación del generador sintético, NO clínicas)
-Sobre {m.n_test} casos sintéticos held-out (test intacto, evaluado una vez):
+## Metrics (synthetic generator recovery, NOT clinical)
+Over {m.n_test} held-out synthetic cases (untouched test, evaluated once):
 
-| Métrica | Valor |
+| Metric | Value |
 |---|---|
-| Leaf accuracy (8 clases) | {m.leaf_accuracy:.3f} |
-| Gate accuracy (peligro vs periférico) | {m.gate_accuracy:.3f} |
-| **Danger recall** (peligro capturado) | {m.danger_recall:.3f} |
-| ECE crudo | {m.ece_raw:.4f} |
-| ECE calibrado (T={m.temperature:.2f}) | {m.ece_calibrated:.4f} |
-| Tasa de abstención (→ undetermined) | {m.abstain_rate:.3f} |
-| **Stress** — leaf accuracy con 40% de features faltantes | {m.stress_leaf_accuracy:.3f} |
-| **Stress** — tasa de abstención con 40% faltantes | {m.stress_abstain_rate:.3f} |
+| Leaf accuracy (8 classes) | {m.leaf_accuracy:.3f} |
+| Gate accuracy (danger vs peripheral) | {m.gate_accuracy:.3f} |
+| **Danger recall** (danger captured) | {m.danger_recall:.3f} |
+| Raw ECE | {m.ece_raw:.4f} |
+| Calibrated ECE (T={m.temperature:.2f}) | {m.ece_calibrated:.4f} |
+| Abstention rate (→ undetermined) | {m.abstain_rate:.3f} |
+| **Stress** — leaf accuracy with 40% of features missing | {m.stress_leaf_accuracy:.3f} |
+| **Stress** — abstention rate with 40% missing | {m.stress_abstain_rate:.3f} |
 
-> ⚠️ Riesgo de circularidad conocido: el label genera las features y el modelo
-> las reaprende → estas métricas NO implican utilidad clínica. Son "recuperación
-> del generador". El ECE calibrado se REPORTA (no se impone como test — temperature
-> minimiza NLL, no ECE). Priors provisionales pendientes de firma del especialista (T-CLIN).
+> ⚠️ Known circularity risk: the label generates the features and the model
+> re-learns them → these metrics do NOT imply clinical utility. They are
+> "generator recovery". The calibrated ECE is REPORTED (not enforced as a test —
+> temperature minimizes NLL, not ECE). Provisional priors pending specialist sign-off (T-CLIN).
 
-## Límites (honestidad)
-- El ML **nunca** fija urgencia (INV-11); solo aporta evidencia probabilística
-  al razonador. Los rieles deterministas deciden.
-- La abstención es EVIDENCIA (el ML sabe decir "no sé"); NO escala urgencia.
-- SHAP (si presente) = atribución local no causal sobre el generador sintético.
+## Limits (honesty)
+- The ML **never** sets urgency (INV-11); it only contributes probabilistic
+  evidence to the reasoner. The deterministic rails decide.
+- Abstention is EVIDENCE (the ML can say "I don't know"); it does NOT escalate urgency.
+- SHAP (if present) = local, non-causal attribution over the synthetic generator.
 """
     (out / "MODEL_CARD.md").write_text(card)
 

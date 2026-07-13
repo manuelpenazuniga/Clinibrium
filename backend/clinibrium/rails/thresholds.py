@@ -1,16 +1,16 @@
-"""Constantes clínicas provisionales para los rieles (FAIL-SAFE).
+"""Provisional clinical constants for the rails (FAIL-SAFE).
 
-REGLA DE ORO: ante duda, la constante debe empujar hacia MÁS seguridad
-(ESCALAR/BLOQUEAR), nunca menos.  Todos los valores son provisionales y
-llevan `# TODO(clinical)` — deben ser validados por el superespecialista.
+GOLDEN RULE: when in doubt, the constant must push toward MORE safety
+(ESCALAR/BLOQUEAR), never less.  All values are provisional and carry
+`# TODO(clinical)` — they must be validated by the superspecialist.
 """
 from __future__ import annotations
 
-# TODO(clinical): bajo este umbral NO se recomienda Epley (no confidentemente VPPB-P)
+# TODO(clinical): below this threshold Epley is NOT recommended (not confidently posterior BPPV)
 BPPV_EPLEY_CONFIDENCE_FLOOR: float = 0.6
 
-# TODO(clinical): top score del differential bajo esto ⇒ incertidumbre ⇒ ESCALAR
+# TODO(clinical): differential top score below this ⇒ uncertainty ⇒ ESCALAR
 DIFFERENTIAL_UNCERTAINTY_FLOOR: float = 0.4
 
-# TODO(clinical): si top1 y top2 difieren en menos que esto ⇒ ambiguo ⇒ ESCALAR
+# TODO(clinical): if top1 and top2 differ by less than this ⇒ ambiguous ⇒ ESCALAR
 AMBIGUITY_EPSILON: float = 0.1

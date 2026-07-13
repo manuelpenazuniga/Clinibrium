@@ -1,4 +1,4 @@
-"""API HTTP FastAPI — endpoints, (de)serialización; pasa por orchestrator."""
+"""FastAPI HTTP API — endpoints, (de)serialization; everything goes through the orchestrator."""
 from __future__ import annotations
 
 from fastapi import FastAPI

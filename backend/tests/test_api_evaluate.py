@@ -1,14 +1,15 @@
-"""Tests del endpoint SSE `POST /api/evaluate` — T9b (streaming pipeline).
+"""Tests for the SSE endpoint `POST /api/evaluate` — T9b (streaming pipeline).
 
-Cubre los criterios de aceptación de la tarea T9b:
-  - 200 text/event-stream con eventos redflag, differential, ml, reasoning, rails, done
-  - 422 ante body inválido (campo extra — incluido `recording_mode` — o tipo malo)
-  - Caso con red flag activa → urgency=inmediata propagada al evento `rails` y `done`
-  - reasoner/ml mockeados (cero llamadas reales de red en el gate)
-  - `on_stage` NO rompe INV-4: hook que raise → evaluate completa + 1 AuditEvent
-  - api respeta el mapa: solo orchestrator + contracts (sin engines/reasoner/rails/grounding/ml_client)
-  - `recording_mode` NUNCA viene del body (verificable: schema CaseFeatures sin
-    ese campo + firma del handler)
+Covers the acceptance criteria of task T9b:
+  - 200 text/event-stream with redflag, differential, ml, reasoning, rails, done events
+  - 422 on invalid body (extra field — including `recording_mode` — or bad type)
+  - Case with active red flag → urgency=inmediata propagated to the `rails` and `done` events
+  - reasoner/ml mocked (zero real network calls in the gate)
+  - `on_stage` does NOT break INV-4: hook that raises → evaluate completes + 1 AuditEvent
+  - api respects the module map: only orchestrator + contracts (no
+    engines/reasoner/rails/grounding/ml_client)
+  - `recording_mode` NEVER comes from the body (verifiable: CaseFeatures schema without
+    that field + handler signature)
 """
 from __future__ import annotations
 
@@ -46,10 +47,10 @@ from clinibrium.orchestrator import evaluate as orchestrator_evaluate
 
 
 def _bppv_benign() -> dict:
-    """BPPV posterior típico: positional, torsional, Dix-Hallpike (+).
+    """Typical posterior BPPV: positional, torsional, Dix-Hallpike (+).
 
-    Mismas features que `test_orchestrator._bppv_benign`, serializadas como
-    dict (lo que llega por HTTP).
+    Same features as `test_orchestrator._bppv_benign`, serialized as a
+    dict (what arrives over HTTP).
     """
     return {
         "duration": SymptomDuration.under_1min.value,
@@ -69,7 +70,7 @@ def _bppv_benign() -> dict:
 
 
 def _red_flag_case() -> dict:
-    """AVS central: HINTS anormal + focal signs + edad > 60 + vascular risk."""
+    """Central AVS: abnormal HINTS + focal signs + age > 60 + vascular risk."""
     return {
         "timing_pattern": TimingPattern.acute_continuous.value,
         "head_impulse": HeadImpulse.normal.value,
@@ -82,16 +83,16 @@ def _red_flag_case() -> dict:
 
 
 def _mock_ml_and_reasoner(monkeypatch) -> None:
-    """Mockea ml + reasoner para cero llamadas reales de red en el gate."""
+    """Mock ml + reasoner so the gate makes zero real network calls."""
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
     monkeypatch.setattr("clinibrium.reasoner.reason", AsyncMock(return_value=None))
 
 
 def _capture_audit(monkeypatch) -> list:
-    """Captura cada llamada a `emit()` del audit engine.
+    """Capture every call to the audit engine's `emit()`.
 
-    Devuelve la lista que se va llenando — al final del test tiene todos
-    los AuditEvents que emitió el orchestrator.
+    Returns the list being filled — by the end of the test it holds all
+    the AuditEvents the orchestrator emitted.
     """
     events: list = []
 
@@ -105,11 +106,11 @@ def _capture_audit(monkeypatch) -> list:
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict]]:
-    """Divide el stream SSE en pares ordenados (event, data).
+    """Split the SSE stream into ordered (event, data) pairs.
 
-    El formato esperado por evento es:
+    The expected per-event format is:
         event: <name>\\ndata: <json>\\n\\n
-    (json.dumps produce JSON sin espacios por default — json.loads lo acepta).
+    (json.dumps produces JSON without spaces by default — json.loads accepts it).
     """
     out: list[tuple[str, dict]] = []
     for block in text.split("\n\n"):
@@ -131,7 +132,7 @@ def _parse_sse(text: str) -> list[tuple[str, dict]]:
 async def _post_evaluate(
     app, payload: dict
 ) -> tuple[int, dict, list[tuple[str, dict]]]:
-    """POST a /api/evaluate y devuelve (status, headers, eventos parseados)."""
+    """POST to /api/evaluate and return (status, headers, parsed events)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         async with client.stream("POST", "/api/evaluate", json=payload) as resp:
@@ -144,12 +145,12 @@ async def _post_evaluate(
 
 
 # =============================================================================
-# Happy path: BPPV benigno → 200 text/event-stream + done con audit_event_id
+# Happy path: benign BPPV → 200 text/event-stream + done with audit_event_id
 # =============================================================================
 
 
 async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch):
-    """POST /api/evaluate con BPPV benigno → 200 text/event-stream + done."""
+    """POST /api/evaluate with benign BPPV → 200 text/event-stream + done."""
     _mock_ml_and_reasoner(monkeypatch)
     app = create_app()
 
@@ -159,8 +160,8 @@ async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch)
     assert headers["content-type"].startswith("text/event-stream")
 
     names = [n for n, _ in events]
-    # El demo (v7.3 §10) muestra el pipeline "pensando" en streaming
-    # en este orden estricto: redflag → differential → ml → reasoning → rails → done.
+    # The demo (v7.3 §10) shows the pipeline "thinking" as a stream,
+    # in this strict order: redflag → differential → ml → reasoning → rails → done.
     assert names == [
         "redflag",
         "differential",
@@ -168,25 +169,25 @@ async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch)
         "reasoning",
         "rails",
         "done",
-    ], f"orden/presencia inesperado: {names}"
+    ], f"unexpected order/presence: {names}"
 
-    # done payload: audit_event_id poblado + urgencia ambulatoria (BPPV benigno).
+    # done payload: audit_event_id populated + ambulatory urgency (benign BPPV).
     done_payload = events[-1][1]
     assert done_payload["audit_event_id"] is not None
     assert done_payload["urgency"] == Urgency.ambulatoria.value
-    # Artefacto auditable FHIR incluido en el done event.
+    # Auditable FHIR artifact included in the done event.
     bundle = done_payload["fhir_bundle"]
     assert bundle["resourceType"] == "Bundle"
     assert any(
         e["resource"]["resourceType"] == "AuditEvent" for e in bundle["entry"]
     )
-    # bundle_sha256 presente y con longitud correcta (tamper-evident).
+    # bundle_sha256 present and with the correct length (tamper-evident).
     sha = done_payload["bundle_sha256"]
     assert isinstance(sha, str)
     assert len(sha) == 64
     assert all(c in "0123456789abcdef" for c in sha)
 
-    # Payload de redflag y rails: shape desidentificado correcto.
+    # redflag and rails payloads: correct de-identified shape.
     redflag_payload = events[0][1]
     assert redflag_payload["red_flag_activa"] is False
     assert redflag_payload["hits_count"] == 0
@@ -198,12 +199,12 @@ async def test_evaluate_sse_bppv_benign_streams_all_stages_and_done(monkeypatch)
 
 
 # =============================================================================
-# Red flag activa → urgencia=inmediata propagada al SSE
+# Active red flag → urgency=inmediata propagated to the SSE
 # =============================================================================
 
 
 async def test_evaluate_sse_red_flag_urgency_inmediata_propagated(monkeypatch):
-    """Red flag activa → urgency=inmediata en el evento `rails` y `done`."""
+    """Active red flag → urgency=inmediata in the `rails` and `done` events."""
     _mock_ml_and_reasoner(monkeypatch)
     app = create_app()
 
@@ -224,22 +225,22 @@ async def test_evaluate_sse_red_flag_urgency_inmediata_propagated(monkeypatch):
 
 
 # =============================================================================
-# 422 — body inválido (campo extra / tipo malo)
+# 422 — invalid body (extra field / bad type)
 # =============================================================================
 
 
 async def test_evaluate_sse_invalid_body_extra_field_returns_422(monkeypatch):
-    """Body con campos fuera del allowlist (p.ej. `recording_mode`) → 422.
+    """Body with fields outside the allowlist (e.g. `recording_mode`) → 422.
 
-    Demuestra AD-6 desde el lado HTTP: el cliente NO puede meter
-    `recording_mode` ni PII en el body.
+    Demonstrates AD-6 from the HTTP side: the client canNOT sneak
+    `recording_mode` or PII into the body.
     """
     _mock_ml_and_reasoner(monkeypatch)
     app = create_app()
 
     payload = _bppv_benign()
-    payload["recording_mode"] = True  # AD-6: NUNCA viene del body
-    payload["patient_name"] = "Juan Pérez"  # PII prohibida por INV-2
+    payload["recording_mode"] = True  # AD-6: NEVER comes from the body
+    payload["patient_name"] = "Juan Pérez"  # PII forbidden by INV-2
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -248,12 +249,12 @@ async def test_evaluate_sse_invalid_body_extra_field_returns_422(monkeypatch):
 
 
 async def test_evaluate_sse_invalid_body_bad_type_returns_422(monkeypatch):
-    """Body con tipo malo (string en vez de int) → 422."""
+    """Body with a bad type (string instead of int) → 422."""
     _mock_ml_and_reasoner(monkeypatch)
     app = create_app()
 
     payload = _bppv_benign()
-    payload["age_years"] = "old"  # int esperado, string enviado
+    payload["age_years"] = "old"  # int expected, string sent
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -262,34 +263,34 @@ async def test_evaluate_sse_invalid_body_bad_type_returns_422(monkeypatch):
 
 
 # =============================================================================
-# AD-6: recording_mode NO está en la firma del handler (server-side only)
+# AD-6: recording_mode is NOT in the handler signature (server-side only)
 # =============================================================================
 
 
 def test_evaluate_endpoint_signature_has_no_recording_mode(monkeypatch):
-    """El handler NO acepta `recording_mode` del body — se lee de Settings
-    (server-side, AD-6). `debug_kill_reasoner` es query param legítimo de demo."""
+    """The handler does NOT accept `recording_mode` from the body — it is read
+    from Settings (server-side, AD-6). `debug_kill_reasoner` is a legitimate demo query param."""
     from clinibrium.api.evaluate import evaluate_endpoint
 
     sig = inspect.signature(evaluate_endpoint)
     assert "recording_mode" not in sig.parameters, (
-        "AD-6 violado: recording_mode NUNCA debe ser parámetro del endpoint. "
-        f"Parámetros: {list(sig.parameters)}"
+        "AD-6 violated: recording_mode must NEVER be an endpoint parameter. "
+        f"Parameters: {list(sig.parameters)}"
     )
     assert "features" in sig.parameters
     assert "debug_kill_reasoner" in sig.parameters
 
 
 # =============================================================================
-# on_stage NO rompe INV-4
+# on_stage does NOT break INV-4
 # =============================================================================
 
 
 async def test_on_stage_hook_raising_does_not_break_inv4(monkeypatch):
-    """Hook que raise → evaluate completa y emite EXACTAMENTE 1 AuditEvent.
+    """Hook that raises → evaluate completes and emits EXACTLY 1 AuditEvent.
 
-    Garantía adicional al INV-4 existente: aunque el observador falle,
-    la auditoría y el resultado del pipeline no se ven afectados.
+    Additional guarantee on top of the existing INV-4: even if the observer
+    fails, the audit trail and the pipeline result are unaffected.
     """
     _mock_ml_and_reasoner(monkeypatch)
     events = _capture_audit(monkeypatch)
@@ -304,18 +305,18 @@ async def test_on_stage_hook_raising_does_not_break_inv4(monkeypatch):
         on_stage=_raising_hook,
     )
 
-    # Pipeline completa, urgencia correcta, audit_event_id poblado.
+    # Pipeline completes, correct urgency, audit_event_id populated.
     assert result.audit_event_id is not None
     assert result.urgency == Urgency.ambulatoria
-    # INV-4: EXACTAMENTE 1 AuditEvent (el exitoso, NO un 2º de error
-    # producto del raise del hook).
+    # INV-4: EXACTLY 1 AuditEvent (the successful one, NOT a 2nd error
+    # event produced by the hook's raise).
     assert len(events) == 1
     assert events[0].outcome == "evaluation"
     assert events[0].id == result.audit_event_id
 
 
 async def test_on_stage_hook_receives_all_five_stages_in_order(monkeypatch):
-    """on_stage es invocado al menos 5 veces, en orden, para los 5 stages."""
+    """on_stage is invoked at least 5 times, in order, for the 5 stages."""
     _mock_ml_and_reasoner(monkeypatch)
 
     seen: list[str] = []
@@ -330,14 +331,14 @@ async def test_on_stage_hook_receives_all_five_stages_in_order(monkeypatch):
         on_stage=_hook,
     )
 
-    # El spec exige estos 5 stages en este orden estricto.
+    # The spec requires these 5 stages in this strict order.
     assert seen == ["redflag", "differential", "ml", "reasoning", "rails"], (
-        f"stages inesperados: {seen}"
+        f"unexpected stages: {seen}"
     )
 
 
 async def test_on_stage_hook_receives_serializable_payloads(monkeypatch):
-    """Los payloads de cada stage son JSON-serializables (desidentificados)."""
+    """Every stage payload is JSON-serializable (de-identified)."""
     _mock_ml_and_reasoner(monkeypatch)
 
     payloads: dict[str, dict] = {}
@@ -352,14 +353,14 @@ async def test_on_stage_hook_receives_serializable_payloads(monkeypatch):
         on_stage=_hook,
     )
 
-    # Cada payload debe ser JSON-serializable (no datetime, no set, no PII).
+    # Every payload must be JSON-serializable (no datetime, no set, no PII).
     for stage, payload in payloads.items():
         try:
             json.dumps(payload)
         except (TypeError, ValueError) as exc:
-            pytest.fail(f"payload de {stage!r} no JSON-serializable: {exc} — {payload!r}")
+            pytest.fail(f"payload of {stage!r} not JSON-serializable: {exc} — {payload!r}")
 
-    # Shape esperado por stage.
+    # Expected shape per stage.
     assert set(payloads["redflag"].keys()) == {"red_flag_activa", "hits_count"}
     assert "top_candidates" in payloads["differential"]
     assert payloads["ml"] == {"available": False}
@@ -368,12 +369,12 @@ async def test_on_stage_hook_receives_serializable_payloads(monkeypatch):
 
 
 # =============================================================================
-# Mapa: api NO importa engines / reasoner / rails / grounding / ml_client directo
+# Module map: api does NOT import engines / reasoner / rails / grounding / ml_client directly
 # =============================================================================
 
 
 def _iter_clinibrium_imports(py_file: Path) -> list[tuple[int, str]]:
-    """Devuelve (line_no, module) de cada import de `clinibrium.*`."""
+    """Return (line_no, module) for every import of `clinibrium.*`."""
     tree = ast.parse(py_file.read_text(encoding="utf-8"))
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -387,9 +388,9 @@ def _iter_clinibrium_imports(py_file: Path) -> list[tuple[int, str]]:
 
 
 def test_api_does_not_import_engines_reasoner_rails_grounding_ml_client():
-    """Mapa: `api → orchestrator, contracts`. PROHIBIDO importar directo
-    engines / reasoner / rails / grounding / ml_client. Todo pasa por
-    orchestrator."""
+    """Module map: `api → orchestrator, contracts`. Importing engines / reasoner /
+    rails / grounding / ml_client directly is FORBIDDEN. Everything goes through
+    the orchestrator."""
     forbidden = {
         "clinibrium.redflag_engine",
         "clinibrium.differential_engine",
@@ -407,30 +408,30 @@ def test_api_does_not_import_engines_reasoner_rails_grounding_ml_client():
             ):
                 offenders.append(f"api/{py.name}:{lineno} → {mod}")
     assert not offenders, (
-        "api importa módulos prohibidos (debe pasar por orchestrator):\n  "
+        "api imports forbidden modules (must go through orchestrator):\n  "
         + "\n  ".join(offenders)
     )
 
 
 # =============================================================================
-# Settings — recording_mode se lee del server, no del body
+# Settings — recording_mode is read server-side, not from the body
 # =============================================================================
 
 
 def test_settings_has_recording_mode_server_side(monkeypatch):
-    """`Settings.RECORDING_MODE` es server-side (env / .env) — el endpoint
-    lo lee con `get_settings().RECORDING_MODE`, NUNCA del body."""
+    """`Settings.RECORDING_MODE` is server-side (env / .env) — the endpoint
+    reads it via `get_settings().RECORDING_MODE`, NEVER from the body."""
     assert hasattr(get_settings(), "RECORDING_MODE")
     assert isinstance(get_settings().RECORDING_MODE, bool)
 
 
 # =============================================================================
-# kill_reasoner — debug_kill_reasoner query param (INV-8 intencional)
+# kill_reasoner — debug_kill_reasoner query param (intentional INV-8)
 # =============================================================================
 
 
 async def test_evaluate_sse_debug_kill_reasoner_yields_reasoning_none(monkeypatch):
-    """debug_kill_reasoner=true → done event con reasoning=None, reasoner no llamado."""
+    """debug_kill_reasoner=true → done event with reasoning=None, reasoner not called."""
     mock_reasoner = AsyncMock()
     monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
@@ -465,12 +466,12 @@ async def test_evaluate_sse_debug_kill_reasoner_yields_reasoning_none(monkeypatc
 
 
 # =============================================================================
-# POST /api/decision — intervención humana registrada (AD-4)
+# POST /api/decision — human intervention recorded (AD-4)
 # =============================================================================
 
 
 async def test_decision_accept_returns_audit_event_clinician(monkeypatch):
-    """POST /api/decision con accept → 200 + AuditEvent actor=clinician."""
+    """POST /api/decision with accept → 200 + AuditEvent actor=clinician."""
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(
@@ -548,7 +549,7 @@ async def test_decision_invalid_returns_422(monkeypatch):
 
 
 async def test_decision_emits_exactly_one_audit_event(monkeypatch):
-    """Cada POST /api/decision → 1 AuditEvent clinician_decision."""
+    """Each POST /api/decision → 1 clinician_decision AuditEvent."""
     from unittest.mock import AsyncMock
 
     persist_mock = AsyncMock(return_value=None)

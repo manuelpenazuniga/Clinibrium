@@ -1,12 +1,13 @@
-"""Abstención por gate de confianza → ``undetermined`` (INV-10).
+"""Abstention via confidence gate → ``undetermined`` (INV-10).
 
-Fix Codex/Gemini: UN solo gate de confianza (sin OOD geométrico/Mahalanobis,
-que degenera sobre one-hot). El umbral ``τ`` se fija en el split de calibración
-para una COBERTURA objetivo y se bloquea. Al abstenerse, ``undetermined=1.0`` es
-un CENTINELA operacional (no una probabilidad calibrada); las 8 hojas van a 0.
+Codex/Gemini fix: a SINGLE confidence gate (no geometric/Mahalanobis OOD,
+which degenerates on one-hot data). The threshold ``τ`` is set on the
+calibration split for a target COVERAGE and then locked. On abstention,
+``undetermined=1.0`` is an operational SENTINEL (not a calibrated
+probability); the 8 leaves go to 0.
 
-La abstención es EVIDENCIA para el reasoner/usuario; el ML NO escala urgencia
-por sí mismo (INV-11): quien decide escalar son los rieles deterministas de A.
+Abstention is EVIDENCE for the reasoner/user; the ML does NOT escalate urgency
+on its own (INV-11): the deterministic rails of A decide any escalation.
 """
 from __future__ import annotations
 
@@ -28,9 +29,9 @@ class ConfidenceGate:
         target_coverage: float = 0.90,
         abstain_label: str = "undetermined",
     ) -> ConfidenceGate:
-        """Fija τ = cuantil de la confianza (max-prob) tal que se cubre
-        ``target_coverage`` de los casos (se abstiene en el (1-cov) menos
-        confiable). Se calcula en calibración y se BLOQUEA.
+        """Sets τ = quantile of the confidence (max-prob) such that
+        ``target_coverage`` of the cases are covered (abstains on the least
+        confident (1-cov)). Computed on calibration and LOCKED.
         """
         conf = np.array([max(p.values()) for p in probs], dtype=float)
         q = float(np.clip(1.0 - target_coverage, 0.0, 1.0))
@@ -38,7 +39,7 @@ class ConfidenceGate:
         return cls(threshold=tau, abstain_label=abstain_label)
 
     def apply(self, p: dict[str, float]) -> dict[str, float]:
-        """Devuelve el vector con la clave de abstención añadida (Σ=1)."""
+        """Returns the vector with the abstention key added (Σ=1)."""
         conf = max(p.values()) if p else 0.0
         if conf < self.threshold:
             out = {k: 0.0 for k in p}

@@ -1,11 +1,11 @@
-"""Clinibrium Track B — motor ML (capa de confianza agnóstica de dominio).
+"""Clinibrium Track B — ML engine (domain-agnostic confidence layer).
 
-EXPERIMENTAL · datos SINTÉTICOS · sin validez clínica.
+EXPERIMENTAL · SYNTHETIC data · no clinical validity.
 
-Aislado de Track A por diseño (AD-15/AD-16): este paquete tiene su propio
-venv y sus deps ML; el core ``clinibrium`` NUNCA importa ``ml_engine`` ni
-instala sus dependencias (INV-6). La comunicación A↔B es solo por el
-contrato HTTP congelado (``ML_PREDICT_URL`` → ``POST /predict``).
+Isolated from Track A by design (AD-15/AD-16): this package has its own venv
+and its own ML deps; the ``clinibrium`` core NEVER imports ``ml_engine`` nor
+installs its dependencies (INV-6). A↔B communication happens only through the
+frozen HTTP contract (``ML_PREDICT_URL`` → ``POST /predict``).
 """
 
 __version__ = "0.1.0"

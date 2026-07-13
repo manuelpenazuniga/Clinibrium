@@ -1,4 +1,4 @@
-"""Único punto de decisión de modelo (AD-6). No se filtra al frontend."""
+"""Single point of model decision (AD-6). Not leaked to the frontend."""
 from __future__ import annotations
 
 from clinibrium.contracts import RedFlagResult

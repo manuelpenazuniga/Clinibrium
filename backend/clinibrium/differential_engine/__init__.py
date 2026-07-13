@@ -1,13 +1,13 @@
-"""DifferentialEngine determinista — reglas ICVD, pool de candidatos.
+"""Deterministic DifferentialEngine — ICVD rules, candidate pool.
 
-Hoja del grafo `clinibrium.*` (INV-5): este paquete SOLO importa de
-`clinibrium.contracts`. NO importa `redflag_engine`, `reasoner`,
-`ml_client` ni `orchestrator`. La separación es ley: la urgencia y la
-seguridad las sellan RedFlagEngine + rails, no este módulo.
+Leaf of the `clinibrium.*` graph (INV-5): this package ONLY imports from
+`clinibrium.contracts`. It does NOT import `redflag_engine`, `reasoner`,
+`ml_client` or `orchestrator`. The separation is law: urgency and
+safety are sealed by RedFlagEngine + rails, not by this module.
 
-API pública:
+Public API:
     evaluate(features) -> DifferentialResult
-    CRITERIA           -> list[DiagnosisCriterion]  (tabla de datos)
+    CRITERIA           -> list[DiagnosisCriterion]  (data table)
 """
 from __future__ import annotations
 

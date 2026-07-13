@@ -1,7 +1,7 @@
-"""Enums compartidos del dominio VertigoDx (vocabulario estructurado).
+"""Shared enums for the VertigoDx domain (structured vocabulary).
 
-Hoja: este módulo NO importa nada de `clinibrium.*` salvo dentro del propio
-paquete `clinibrium.contracts`.
+Leaf: this module imports NOTHING from `clinibrium.*` except within the
+`clinibrium.contracts` package itself.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class Trigger(str, Enum):
 
 
 class TimingPattern(str, Enum):
-    """TiTrATE-style patrón temporal."""
+    """TiTrATE-style temporal pattern."""
 
     acute_continuous = "acute_continuous"
     episodic_triggered = "episodic_triggered"
@@ -52,10 +52,10 @@ class NystagmusDirection(str, Enum):
 
 
 class HeadImpulse(str, Enum):
-    """Resultado del HINTS head-impulse test.
+    """Result of the HINTS head-impulse test.
 
-    OJO: en síndrome vestibular agudo (AVS), `normal` es SOSPECHOSO de causa
-    central (test de HINTS solo se interpreta con el trío completo).
+    CAUTION: in acute vestibular syndrome (AVS), `normal` is SUSPICIOUS for a
+    central cause (the HINTS test is only interpreted with the full triad).
     """
 
     normal = "normal"
@@ -110,10 +110,10 @@ class Diagnosis(str, Enum):
 
 
 class Urgency(str, Enum):
-    """Nivel de urgencia.
+    """Urgency level.
 
-    `inmediata` SOLO la fija `RedFlagEngine` o los rails (INV-1); el LLM
-    NUNCA debe poder asignarla por sí solo.
+    `inmediata` is ONLY set by `RedFlagEngine` or the rails (INV-1); the LLM
+    must NEVER be able to assign it on its own.
     """
 
     inmediata = "inmediata"
@@ -122,7 +122,7 @@ class Urgency(str, Enum):
 
 
 class ForcedAction(str, Enum):
-    """Acciones forzadas por red flags / rails (no negociables)."""
+    """Actions forced by red flags / rails (non-negotiable)."""
 
     DERIVAR_URGENTE = "DERIVAR_URGENTE"
     NO_BENIGNO = "NO_BENIGNO"

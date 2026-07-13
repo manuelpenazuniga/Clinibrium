@@ -1,4 +1,9 @@
-"""Motor del reasoner: llama a Claude, assembla ReasonerOutput."""
+"""Reasoner engine: calls Claude, assembles ReasonerOutput.
+
+NOTE: the system/user prompts below are intentionally in Spanish — they
+instruct Claude to produce clinician-facing output in Spanish. Do not
+translate them.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +35,7 @@ RETRY_BACKOFF_S = (1.0, 3.0)
 
 
 class _LLMReasoning(BaseModel):
-    """Salida estructurada del LLM. Solo explicación y conciliación."""
+    """Structured LLM output. Explanation and reconciliation only."""
 
     explanation: str
     reconciliation: str
@@ -128,9 +133,9 @@ async def reason(
         api_key = get_settings().ANTHROPIC_API_KEY
         client = AsyncAnthropic(api_key=api_key)
 
-    # `thinking` solo aplica a Opus 4.8 (adaptive). Para Haiku 4.5 se OMITE
-    # el parámetro por completo — pasar `thinking=None` explícito lo rechaza
-    # la API con 400 ("thinking: Input should be an object").
+    # `thinking` only applies to Opus 4.8 (adaptive). For Haiku 4.5 the
+    # parameter is OMITTED entirely — passing an explicit `thinking=None`
+    # is rejected by the API with 400 ("thinking: Input should be an object").
     extra_kwargs: dict[str, Any] = {}
     if model == OPUS:
         extra_kwargs["thinking"] = {"type": "adaptive"}
@@ -148,7 +153,7 @@ async def reason(
                 )
             parsed = resp.parsed_output
             if parsed is None:
-                raise RuntimeError("Claude devolvió respuesta sin parsed_output")
+                raise RuntimeError("Claude returned a response without parsed_output")
             return ReasonerOutput(
                 explanation=parsed.explanation,
                 reconciliation=parsed.reconciliation,
@@ -170,8 +175,8 @@ async def reason(
             else:
                 logger.exception("Reasoner rate limited after %d retries", MAX_RETRIES)
         except (APIConnectionError, APIStatusError, asyncio.TimeoutError) as e:
-            # Reintentable: conexión, timeout, o 5xx del servidor. Un 4xx de
-            # cliente (400 bad request, etc.) NO mejora reintentando → break.
+            # Retryable: connection, timeout, or server 5xx. A client 4xx
+            # (400 bad request, etc.) does NOT improve on retry → break.
             retryable = isinstance(e, (APIConnectionError, asyncio.TimeoutError)) or (
                 isinstance(e, APIStatusError) and e.status_code >= 500
             )
@@ -187,7 +192,7 @@ async def reason(
                 await asyncio.sleep(delay)
             else:
                 logger.exception("Reasoner failed: %s", type(e).__name__)
-                break  # no-reintentable (4xx) o reintentos agotados → degradar ya
+                break  # non-retryable (4xx) or retries exhausted → degrade now
         except Exception:
             logger.exception("Reasoner unexpected error")
             break

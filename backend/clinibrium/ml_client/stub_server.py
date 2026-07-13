@@ -1,22 +1,22 @@
-"""Stub server de `POST /predict` (SOLO dev/demo).
+"""Stub server for `POST /predict` (dev/demo ONLY).
 
-NO se monta en la app principal de Clinibrium (ver `clinibrium.api`).
-Es una app FastAPI separada, pensada para validar el contrato
-congelado y la ruta feliz del `ml_client` sin depender del servicio
-ML real (persona 2).
+NOT mounted on the main Clinibrium app (see `clinibrium.api`).
+It is a separate FastAPI app, meant to validate the frozen contract
+and the happy path of `ml_client` without depending on the real ML
+service (person 2).
 
-Cómo correrlo:
+How to run it:
 
     cd backend && source .venv/bin/activate
     uvicorn clinibrium.ml_client.stub_server:app --port 8001 --reload
 
-Y en otra terminal, apuntar el cliente:
+And in another terminal, point the client:
 
     ML_PREDICT_URL=http://localhost:8001 pytest -q
 
-La probabilidad que devuelve es una distribución fija sesgada hacia
-BPPV posterior — suficiente para probar la ruta feliz y los SHAP, no
-para uso clínico.
+The probability it returns is a fixed distribution biased towards
+posterior BPPV — enough to test the happy path and SHAP values, not
+for clinical use.
 """
 from __future__ import annotations
 
@@ -28,12 +28,12 @@ from clinibrium.contracts import CaseFeatures, Diagnosis, PredictResponse
 app = FastAPI(
     title="Clinibrium ML stub (dev only)",
     version="0.1.0",
-    description="Stub de POST /predict — NO usar en producción.",
+    description="POST /predict stub — do NOT use in production.",
 )
 
 STUB_MODEL_VERSION = "stub-v0.1-bppv-biased"
 
-# Distribución fija plausible: BPPV posterior como hipótesis principal.
+# Plausible fixed distribution: posterior BPPV as the leading hypothesis.
 STUB_PROBABILITIES: dict[str, float] = {
     Diagnosis.bppv_posterior.value: 0.62,
     Diagnosis.bppv_horizontal.value: 0.08,
@@ -58,10 +58,9 @@ STUB_SHAP: dict[str, float] = {
 
 
 class _PredictRequest(BaseModel):
-    """Acepta el body como dict plano (lo que el cliente envía con
-    `model_dump(mode="json")`). Lo declaramos como `dict` para no
-    re-validar dos veces el `CaseFeatures` (la fuente de verdad es el
-    cliente)."""
+    """Accepts the body as a plain dict (what the client sends with
+    `model_dump(mode="json")`). Declared as `dict` to avoid re-validating
+    `CaseFeatures` twice (the source of truth is the client)."""
 
     model_config = {"extra": "allow"}
 
@@ -73,7 +72,7 @@ async def health() -> dict[str, str]:
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict(_req: _PredictRequest) -> PredictResponse:
-    """Devuelve probabilidades fijas plausibles (BPPV-biased)."""
+    """Returns plausible fixed probabilities (BPPV-biased)."""
     return PredictResponse(
         probabilities=STUB_PROBABILITIES,
         shap=STUB_SHAP,
@@ -82,6 +81,6 @@ async def predict(_req: _PredictRequest) -> PredictResponse:
 
 
 def _typecheck_only() -> None:
-    """Helper para import-time: confirma que el shape de `CaseFeatures`
-    es compatible con el stub (no se ejecuta, solo el anotado)."""
+    """Import-time helper: confirms that the `CaseFeatures` shape is
+    compatible with the stub (not executed, only the annotation)."""
     _ = CaseFeatures  # noqa: F841

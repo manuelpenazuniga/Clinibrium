@@ -1,10 +1,10 @@
-"""Tests del módulo `contracts` (hoja del grafo `clinibrium.*`).
+"""Tests for the `contracts` module (leaf of the `clinibrium.*` graph).
 
-Cubre los 4 criterios de aceptación de la tarea:
-  (a) instanciar cada modelo con valores mínimos,
-  (b) `CaseFeatures(extra_field=...)` levanta `ValidationError` (extra=forbid),
-  (c) `NETWORK_SAFE_FIELDS` NO contiene PII keys (test negativo, INV-2),
-  (d) `AuditEvent` es inmutable (`frozen=True`).
+Covers the task's 4 acceptance criteria:
+  (a) instantiate every model with minimal values,
+  (b) `CaseFeatures(extra_field=...)` raises `ValidationError` (extra=forbid),
+  (c) `NETWORK_SAFE_FIELDS` contains NO PII keys (negative test, INV-2),
+  (d) `AuditEvent` is immutable (`frozen=True`).
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def test_actor_type_values() -> None:
 
 
 # =========================================================================
-# CaseFeatures — (a) instancia mínima; (b) extra=forbid; (c) allowlist sin PII
+# CaseFeatures — (a) minimal instance; (b) extra=forbid; (c) allowlist without PII
 # =========================================================================
 
 
@@ -78,7 +78,7 @@ def test_case_features_minimal_defaults() -> None:
     assert f.focal_signs == set()
     assert f.vascular_risk_factors == set()
     assert f.worsening_during_flow is False
-    # los opcionales quedan en None
+    # optional fields stay None
     assert f.duration is None
     assert f.onset is None
     assert f.trigger is None
@@ -135,20 +135,20 @@ def test_case_features_full_instantiation() -> None:
 
 
 def test_case_features_rejects_extra_field() -> None:
-    """(b) extra=forbid — INV-2: cualquier campo fuera del allowlist explota."""
+    """(b) extra=forbid — INV-2: any field outside the allowlist blows up."""
     with pytest.raises(ValidationError):
         CaseFeatures(extra_field=1)
 
 
 def test_case_features_rejects_pii_keys() -> None:
-    """INV-2: PII keys explotas en construcción, aunque sean del allowlist."""
+    """INV-2: PII keys blow up at construction time, even if allowlist-like."""
     for pii_key in ("name", "rut", "dob", "address", "notes", "patient_id"):
         with pytest.raises(ValidationError):
             CaseFeatures(**{pii_key: "leaked"})  # type: ignore[arg-type]
 
 
 def test_network_safe_fields_excludes_pii_keys() -> None:
-    """(c) test negativo de allowlist (INV-2)."""
+    """(c) negative allowlist test (INV-2)."""
     forbidden = {
         "name",
         "rut",
@@ -161,7 +161,7 @@ def test_network_safe_fields_excludes_pii_keys() -> None:
         "patient_id",
     }
     leaked = forbidden & set(NETWORK_SAFE_FIELDS)
-    assert not leaked, f"NETWORK_SAFE_FIELDS filtra keys de PII: {leaked}"
+    assert not leaked, f"NETWORK_SAFE_FIELDS leaks PII keys: {leaked}"
 
 
 def test_network_safe_fields_matches_case_features_fields() -> None:
@@ -240,7 +240,7 @@ def test_reasoner_output_minimal() -> None:
 
 
 def test_reasoner_output_with_suggested_urgency() -> None:
-    """AD-11: `reasoner_suggested_urgency` es un enum Urgency estructurado."""
+    """AD-11: `reasoner_suggested_urgency` is a structured Urgency enum."""
     r = ReasonerOutput(
         explanation="Caso dudoso.",
         reconciliation="Las features no cuadran con VPPB típico.",
@@ -269,7 +269,7 @@ def test_pipeline_result_minimal() -> None:
 
 
 # =========================================================================
-# AuditEvent — (d) inmutable (INV-4)
+# AuditEvent — (d) immutable (INV-4)
 # =========================================================================
 
 
@@ -309,7 +309,7 @@ def test_audit_event_full() -> None:
 
 
 def test_audit_event_is_frozen() -> None:
-    """(d) AuditEvent es inmutable (frozen=True, INV-4)."""
+    """(d) AuditEvent is immutable (frozen=True, INV-4)."""
     e = AuditEvent(
         id="evt-3",
         occurred_at=datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc),

@@ -1,26 +1,28 @@
-"""`InlineGrounding` — implementación determinista y sin DB del RAG
-de criterios (path demo confiable, AD-10).
+"""`InlineGrounding` — deterministic, DB-free implementation of the
+criteria RAG (reliable demo path, AD-10).
 
-El `CORPUS` aquí es la **fuente de verdad** del grounding para el demo
-y para el path `rag_inline` (cuando pgvector no está disponible). La
-implementación `PgvectorGrounding` (en `pgvector.py`) ingiere este
-mismo corpus en la tabla vectorial.
+The `CORPUS` here is the **source of truth** of the grounding for the
+demo and for the `rag_inline` path (when pgvector is unavailable). The
+`PgvectorGrounding` implementation (in `pgvector.py`) ingests this same
+corpus into the vector table.
 
-AD-5 / regla dura 3 — AUTORÍA PROPIA DEL CORPUS
------------------------------------------------
-Los criterios ICVD (International Classification of Vestibular Disorders,
-editorial Sage) son CC BY-**NC** (no comercial). El **texto** de los
-criterios está restringido para uso comercial; las **reglas como
-hechos** (umbrales, booleanos) no son copyrightables. Por tanto, este
-corpus es **reescritura estructurada ORIGINAL del equipo Clinibrium**,
-NO una copia del PDF ni de tablas ICVD. Cada chunk es una paráfrasis
-redactada por el equipo a partir de los conceptos que el superespecialista
-considera relevantes para el razonamiento del agente. La revisión final
-de cada paráfrasis contra el criterio original queda como tarea clínica
-(`T-CLIN`).
+AD-5 / hard rule 3 — CORPUS IS OUR OWN AUTHORSHIP
+-------------------------------------------------
+The ICVD criteria (International Classification of Vestibular Disorders,
+published by Sage) are CC BY-**NC** (non-commercial). The **text** of
+the criteria is restricted for commercial use; the **rules as facts**
+(thresholds, booleans) are not copyrightable. Therefore, this corpus is
+an **ORIGINAL structured rewrite by the Clinibrium team**, NOT a copy of
+the PDF or ICVD tables. Each chunk is a paraphrase written by the team
+from the concepts the superspecialist considers relevant for the agent's
+reasoning. The final review of each paraphrase against the original
+criterion remains a clinical task (`T-CLIN`).
 
-Lo que el reasoner consume de aquí es **contexto de razonamiento**,
-NO una cita bibliográfica.
+NOTE: the chunk texts below are intentionally kept in Spanish — they are
+RAG content fed to Claude and potentially surfaced to the clinician.
+
+What the reasoner consumes from here is **reasoning context**,
+NOT a bibliographic citation.
 """
 from __future__ import annotations
 
@@ -28,8 +30,8 @@ from clinibrium.contracts import CaseFeatures, Diagnosis, DifferentialResult
 from clinibrium.grounding.base import GroundingChunk
 
 # ---------------------------------------------------------------------------
-# CORPUS — 1-3 chunks por diagnóstico (8 diagnósticos). Cada `source_id`
-# es trazable: `clinibrium-paraphrase:<dx>-<n>`. Texto: paráfrasis propia.
+# CORPUS — 1-3 chunks per diagnosis (8 diagnoses). Each `source_id`
+# is traceable: `clinibrium-paraphrase:<dx>-<n>`. Text: our own paraphrase.
 # ---------------------------------------------------------------------------
 
 
@@ -45,10 +47,10 @@ def _chunk(
     )
 
 
-# Cada diagnóstico tiene un chunk "core" (cuadro típico) y, según
-# corresponda, chunks adicionales sobre gatillo, nistagmo/findings
-# relevantes, y manejo. Esto le da al reasoner opciones para fundar
-# su explicación sin reusar texto verbatim.
+# Each diagnosis has a "core" chunk (typical presentation) and, where
+# applicable, additional chunks on trigger, relevant nystagmus/findings,
+# and management. This gives the reasoner options to ground its
+# explanation without reusing verbatim text.
 
 _BPPV_POSTERIOR: list[GroundingChunk] = [
     _chunk(
@@ -306,29 +308,29 @@ CORPUS: dict[Diagnosis, list[GroundingChunk]] = {
 }
 
 
-# Cubrimos exactamente los 8 diagnósticos de la spec de la tarea
-# (sin `undetermined`, que es el fallback del pool cuando nada matchea).
+# We cover exactly the 8 diagnoses from the task spec
+# (excluding `undetermined`, the pool's fallback when nothing matches).
 SUPPORTED_DIAGNOSES: frozenset[Diagnosis] = frozenset(CORPUS.keys())
 
 
 class InlineGrounding:
-    """`Grounding` determinista sin DB — el path demo confiable.
+    """Deterministic, DB-free `Grounding` — the reliable demo path.
 
-    Estrategia:
-      - Toma los diagnósticos del `DifferentialResult.candidates` (que ya
-        vienen ordenados desc por score desde el `DifferentialEngine`).
-      - Para cada candidato del top-N (cabe `k` chunks en total), emite
-        los chunks asociados del `CORPUS` en el orden del corpus.
-      - Trunca a `k` chunks en total.
+    Strategy:
+      - Takes the diagnoses from `DifferentialResult.candidates` (already
+        sorted desc by score by the `DifferentialEngine`).
+      - For each top-N candidate (up to `k` chunks in total), emits the
+        associated `CORPUS` chunks in corpus order.
+      - Truncates to `k` chunks in total.
 
-    Determinista: mismas (candidates, features, k) ⇒ misma lista de
-    chunks, en el mismo orden. Sin random, sin I/O, sin red, sin LLM.
+    Deterministic: same (candidates, features, k) ⇒ same list of chunks,
+    in the same order. No randomness, no I/O, no network, no LLM.
     """
 
     def retrieve(
         self,
         candidates: DifferentialResult,
-        features: CaseFeatures,  # noqa: ARG002 — firma del Protocol
+        features: CaseFeatures,  # noqa: ARG002 — Protocol signature
         k: int = 4,
     ) -> list[GroundingChunk]:
         out: list[GroundingChunk] = []

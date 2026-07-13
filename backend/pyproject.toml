@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clinibrium"
 version = "0.1.0"
-description = "Clinibrium — agente clínico otoneurológico (VertigoDx)."
+description = "Clinibrium — otoneurological clinical agent (VertigoDx)."
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110",

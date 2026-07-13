@@ -1,6 +1,6 @@
-"""TB1.3 — HierarchicalCatBoost: gate binario monótono (INV-9) + camino.
+"""TB1.3 — HierarchicalCatBoost: monotone binary gate (INV-9) + path.
 
-Modelo chico cacheado (menos filas/iteraciones) para que el gate sea rápido.
+Small cached model (fewer rows/iterations) so the gate stays fast.
 """
 import dataclasses
 import functools
@@ -38,16 +38,16 @@ def test_leaf_probs_sum_to_one() -> None:
 
 
 def test_INV9_gate_monotone_in_risk_features() -> None:
-    """Subir CUALQUIER feature de riesgo (+1, ceteris paribus) NUNCA baja P(dangerous).
+    """Raising ANY risk feature (+1, ceteris paribus) NEVER lowers P(dangerous).
 
-    Se testea al nivel EXACTO que CatBoost garantiza: la matriz codificada, un
-    solo feature movido, el resto fijo. Es la garantía dura de INV-9 (gate,
-    pre-abstención/pre-calibración).
+    Tested at the EXACT level CatBoost guarantees: the encoded matrix, a
+    single feature moved, everything else fixed. This is the hard guarantee of
+    INV-9 (gate, pre-abstention/pre-calibration).
     """
     model = _small_model()
     x = _grid_rows(25)
     risk = FEATURES.risk_features
-    assert risk  # hay features de riesgo declaradas
+    assert risk  # there are declared risk features
     for i in range(len(x)):
         base = x.iloc[[i]].copy()
         p_base = model.gate_danger_proba_encoded(base)
@@ -57,12 +57,12 @@ def test_INV9_gate_monotone_in_risk_features() -> None:
             bumped.iloc[0, col] = float(base.iloc[0][rf]) + 1.0
             p_up = model.gate_danger_proba_encoded(bumped)
             assert p_up >= p_base - 1e-6, (
-                f"fila {i}: subir '{rf}' bajó P(dangerous) {p_base:.4f}→{p_up:.4f}"
+                f"row {i}: raising '{rf}' lowered P(dangerous) {p_base:.4f}→{p_up:.4f}"
             )
 
 
 def test_INV9_holds_for_two_steps() -> None:
-    """Monotonía acumulativa: +2 tampoco baja P(dangerous)."""
+    """Cumulative monotonicity: +2 does not lower P(dangerous) either."""
     model = _small_model()
     x = _grid_rows(10)
     for i in range(len(x)):
@@ -75,7 +75,7 @@ def test_INV9_holds_for_two_steps() -> None:
 
 
 def test_clear_central_case_flags_danger() -> None:
-    """Sanidad: un caso claramente central concentra masa en la rama de peligro."""
+    """Sanity: a clearly central case concentrates mass on the danger branch."""
     model = _small_model()
     central = {
         "timing_pattern": "acute_continuous", "head_impulse": "normal",
@@ -85,14 +85,14 @@ def test_clear_central_case_flags_danger() -> None:
     }
     p = model.predict_proba_one(central)
     p_danger = p["central_suspected"] + p["cardiogenic_suspected"]
-    assert p_danger > 0.5, f"P(peligro)={p_danger:.3f} debería dominar en caso central claro"
+    assert p_danger > 0.5, f"P(danger)={p_danger:.3f} should dominate in a clear central case"
 
 
 def test_clear_bppv_case_is_peripheral() -> None:
-    """VPPB = patrón POSICIONAL + fatigable (dix_hallpike), NO torsional espontáneo.
+    """BPPV = POSITIONAL + fatigable pattern (dix_hallpike), NOT spontaneous torsional.
 
-    (Fix P0.5: el torsional/vertical espontáneo es CENTRAL — ver test de
-    consistencia A↔B abajo; VPPB se representa por el patrón posicional.)
+    (P0.5 fix: spontaneous torsional/vertical is CENTRAL — see the A↔B
+    consistency test below; BPPV is represented by the positional pattern.)
     """
     model = _small_model()
     bppv = {
@@ -102,21 +102,22 @@ def test_clear_bppv_case_is_peripheral() -> None:
     }
     p = model.predict_proba_one(bppv)
     p_danger = p["central_suspected"] + p["cardiogenic_suspected"]
-    assert p_danger < 0.3, f"P(peligro)={p_danger:.3f} no debería dominar en BPPV claro"
+    assert p_danger < 0.3, f"P(danger)={p_danger:.3f} should not dominate in a clear BPPV case"
 
 
 def test_P05_spontaneous_torsional_not_classified_as_benign_bppv() -> None:
-    """Fix P0.5 — la propiedad de SEGURIDAD que importa.
+    """P0.5 fix — the SAFETY property that matters.
 
-    El bug original: el generador ponía torsional_pure en el perfil BPPV → B
-    clasificaba un nistagmo ESPONTÁNEO puro torsional/vertical como **VPPB benigno
-    posicional** (que sugeriría Epley), contradiciendo a A (red flag A2 → central).
+    The original bug: the generator put torsional_pure in the BPPV profile → B
+    classified a SPONTANEOUS pure torsional/vertical nystagmus as **benign
+    positional BPPV** (which would suggest Epley), contradicting A (red flag
+    A2 → central).
 
-    B es una capa PROBABILÍSTICA blanda; A es la autoridad de seguridad (regla
-    dura, INV-1). No le exigimos a B replicar la regla dura, pero sí que NO
-    etiquete el signo central como VPPB tratable. (La dirección de reconciliación
-    hacia peligro está cubierta por el test-grilla INV-9, que ahora incluye
-    `central_nystagmus_pattern` como feature de riesgo.)
+    B is a soft PROBABILISTIC layer; A is the safety authority (hard rule,
+    INV-1). We don't require B to replicate the hard rule, but it must NOT
+    label the central sign as treatable BPPV. (The reconciliation direction
+    toward danger is covered by the INV-9 grid test, which now includes
+    `central_nystagmus_pattern` as a risk feature.)
     """
     model = _small_model()
     for direction in ("torsional_pure", "vertical_pure"):
@@ -126,13 +127,13 @@ def test_P05_spontaneous_torsional_not_classified_as_benign_bppv() -> None:
         }
         p = model.predict_proba_one(spont)
         assert p["bppv_posterior"] < 0.15, (
-            f"{direction} espontáneo → B lo llama VPPB posterior "
-            f"({p['bppv_posterior']:.3f}); contradice a A y sugeriría Epley"
+            f"spontaneous {direction} → B calls it posterior BPPV "
+            f"({p['bppv_posterior']:.3f}); contradicts A and would suggest Epley"
         )
         assert p["bppv_horizontal"] < 0.15
 
 
 def test_P05_central_nystagmus_pattern_is_a_risk_feature() -> None:
-    """El patrón de nistagmo central alimenta el gate de peligro (monótono)."""
+    """The central nystagmus pattern feeds the danger gate (monotone)."""
     assert "central_nystagmus_pattern" in vertigo.FEATURES.risk_features
-    # y NO aparece torsional/vertical puro en el perfil BPPV (se testea en synth)
+    # and pure torsional/vertical does NOT appear in the BPPV profile (tested in synth)

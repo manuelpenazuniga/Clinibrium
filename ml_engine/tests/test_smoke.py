@@ -1,4 +1,4 @@
-"""TB1.0 — smoke: el paquete y sus deps ML importan (kill-gate del track)."""
+"""TB1.0 — smoke: the package and its ML deps import (track kill-gate)."""
 
 
 def test_package_imports() -> None:
@@ -9,7 +9,7 @@ def test_package_imports() -> None:
 
 
 def test_ml_deps_import() -> None:
-    """Confirma que las wheels pesadas resolvieron en py3.12/arm64."""
+    """Confirms the heavy wheels resolved on py3.12/arm64."""
     import catboost  # noqa: F401
     import numpy  # noqa: F401
     import pandas  # noqa: F401
@@ -20,9 +20,9 @@ def test_ml_deps_import() -> None:
 
 
 def test_core_never_imports_clinibrium_or_domains() -> None:
-    """AD-15/AD-16: el core es agnóstico — no IMPORTA A ni dominios.
+    """AD-15/AD-16: the core is agnostic — it does not IMPORT A nor domains.
 
-    Chequea imports reales vía AST (no menciones en docstrings/comentarios).
+    Checks real imports via AST (not mentions in docstrings/comments).
     """
     import ast
     import inspect
@@ -45,4 +45,4 @@ def test_core_never_imports_clinibrium_or_domains() -> None:
         imported = _imported_modules(inspect.getsource(m))
         if any(x.startswith("clinibrium") or x.startswith("ml_engine.domains") for x in imported):
             offenders.append(mod.name)
-    assert not offenders, f"core importa A/dominios: {offenders}"
+    assert not offenders, f"core imports A/domains: {offenders}"
