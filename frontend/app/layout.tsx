@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import SiteFooter from "./components/SiteFooter";
+import LanguageProvider from "./components/LanguageProvider";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -40,12 +41,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${plexSans.variable} ${plexSerif.variable} ${plexMono.variable}`}
     >
       <body>
-        <a href="#contenido" className="skip-link">
-          Saltar al contenido
-        </a>
-        <SiteHeader />
-        <div id="contenido">{children}</div>
-        <SiteFooter />
+        <LanguageProvider>
+          <SiteHeader />
+          <div id="contenido">{children}</div>
+          <SiteFooter />
+        </LanguageProvider>
       </body>
     </html>
   );

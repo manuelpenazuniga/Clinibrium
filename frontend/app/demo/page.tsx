@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import PipelineDemo from "../components/PipelineDemo";
+import PageHeader from "../components/PageHeader";
 
 export const metadata: Metadata = {
   title: "Demo — Clinibrium",
@@ -10,15 +11,7 @@ export const metadata: Metadata = {
 export default function DemoPage() {
   return (
     <main className="app-container">
-      <header className="page-header">
-        <p className="eyebrow">Demo interactiva</p>
-        <h1>Pipeline de evaluación en vivo</h1>
-        <p className="page-lede">
-          Elige un caso, corre el pipeline real por SSE y comprueba las tres
-          propiedades: los rieles ganan, la degradación es segura y todo queda
-          en un recibo auditable.
-        </p>
-      </header>
+      <PageHeader kind="demo" />
       <PipelineDemo />
     </main>
   );

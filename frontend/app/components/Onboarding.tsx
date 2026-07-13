@@ -7,35 +7,11 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { useLanguage } from "./LanguageProvider";
 
-interface TourStep {
-  /** data-tour value of the element to highlight; no target = centered step */
-  target?: string;
-  title: string;
-  body: string;
-}
-
-const STEPS: TourStep[] = [
-  {
-    target: "presets",
-    title: "1 · Elige un caso clínico",
-    body: "Tres presets reales: VPPB benigno, sospecha de stroke (HINTS central) y Ménière. Cada tarjeta muestra las features desidentificadas que se envían — nada más cruza la red.",
-  },
-  {
-    target: "controls",
-    title: "2 · Corre el pipeline en vivo",
-    body: "La evaluación llega por streaming, etapa por etapa: red flags y diferencial deterministas primero, ML y Claude como capas aditivas, y los rieles sellando al final.",
-  },
-  {
-    target: "kill",
-    title: "3 · Mata a Claude",
-    body: "Activa este interruptor y re-evalúa: la urgencia y las red flags no cambian aunque el razonador caiga. La seguridad no depende del LLM — esa es la tesis.",
-  },
-  {
-    title: "4 · Recibo clínico y decisión",
-    body: "Al final obtienes un recibo auditable: urgencia, rieles disparados, hash SHA-256 verificable en tu browser, y la decisión del médico registrada en el AuditEvent. Prueba también el fork clínico: una variable cambia y el riel dispara de verdad.",
-  },
-];
+// data-tour target per step (language-independent structure); copy comes from
+// the dictionary (t.onboarding.steps), paired by index. `undefined` = centered.
+const STEP_TARGETS: (string | undefined)[] = ["presets", "controls", "kill", undefined];
 
 interface SpotRect {
   top: number;
@@ -61,12 +37,15 @@ export default function Onboarding({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
+  const steps = t.onboarding.steps;
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<SpotRect | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const current = steps[step];
+  const currentTarget = STEP_TARGETS[step];
+  const isLast = step === steps.length - 1;
 
   const close = useCallback(() => {
     setStep(0);
@@ -77,8 +56,8 @@ export default function Onboarding({
   useEffect(() => {
     if (!open) return;
 
-    const target = current.target
-      ? document.querySelector<HTMLElement>(`[data-tour="${current.target}"]`)
+    const target = currentTarget
+      ? document.querySelector<HTMLElement>(`[data-tour="${currentTarget}"]`)
       : null;
 
     if (target) {
@@ -103,7 +82,7 @@ export default function Onboarding({
     };
     raf = requestAnimationFrame(track);
     return () => cancelAnimationFrame(raf);
-  }, [open, current.target]);
+  }, [open, currentTarget]);
 
   useEffect(() => {
     if (open) cardRef.current?.focus();
@@ -167,10 +146,10 @@ export default function Onboarding({
         <p className="tour-body">{current.body}</p>
         <div className="tour-footer">
           <button type="button" className="tour-skip" onClick={close}>
-            Saltar guía
+            {t.onboarding.skip}
           </button>
           <div className="tour-dots" aria-hidden="true">
-            {STEPS.map((s, i) => (
+            {steps.map((s, i) => (
               <span
                 key={s.title}
                 className={`tour-dot${i === step ? " current" : ""}`}
@@ -184,7 +163,7 @@ export default function Onboarding({
                 className="btn-secondary btn-sm"
                 onClick={() => setStep((s) => s - 1)}
               >
-                Atrás
+                {t.onboarding.back}
               </button>
             )}
             <button
@@ -192,7 +171,7 @@ export default function Onboarding({
               className="btn-primary btn-sm"
               onClick={() => (isLast ? close() : setStep((s) => s + 1))}
             >
-              {isLast ? "Empezar" : "Siguiente"}
+              {isLast ? t.onboarding.start : t.onboarding.next}
             </button>
           </div>
         </div>

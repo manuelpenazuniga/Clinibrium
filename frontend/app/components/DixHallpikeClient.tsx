@@ -29,6 +29,8 @@ import type {
   StageName,
 } from "@/lib/types";
 import { streamEvaluation } from "@/lib/api";
+import { uiErrorText, type Dict, type UiError } from "@/lib/i18n";
+import { useLanguage } from "./LanguageProvider";
 import ClinicalCaseReceipt from "./ClinicalCaseReceipt";
 import PipelineRail from "./PipelineRail";
 import PrivacyEgressMeter from "./PrivacyEgressMeter";
@@ -65,6 +67,8 @@ async function loadMediaPipe(): Promise<MediaPipeModules> {
 }
 
 export default function DixHallpikeClient() {
+  const { lang, t } = useLanguage();
+  const d = t.dix;
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const graphRef = useRef<HTMLCanvasElement>(null);
@@ -95,11 +99,15 @@ export default function DixHallpikeClient() {
 
   const [torsion, setTorsion] = useState<TorsionDirection>("");
   const [dixResult, setDixResult] = useState<DixHallpikeResult | "">("");
-  const [confirmError, setConfirmError] = useState<string | null>(null);
+  // Stored as a dictionary KEY so a mid-session language toggle re-localizes
+  // the visible alert (codex-audit-4 Baja 1), not the already-translated text.
+  const [confirmError, setConfirmError] = useState<
+    "errTorsionRequired" | "errDixRequired" | null
+  >(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(null);
-  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [pipelineError, setPipelineError] = useState<UiError | null>(null);
   const [completedStages, setCompletedStages] = useState<Set<StageName>>(new Set());
   const [activeStage, setActiveStage] = useState<StageName | null>(null);
   const [framesProcessed, setFramesProcessed] = useState(0);
@@ -419,11 +427,11 @@ export default function DixHallpikeClient() {
 
   const handleSendToPipeline = useCallback(async () => {
     if (!torsion) {
-      setConfirmError("La confirmación de torsión es obligatoria antes de enviar.");
+      setConfirmError("errTorsionRequired");
       return;
     }
     if (!dixResult) {
-      setConfirmError("El resultado del Dix-Hallpike es obligatorio.");
+      setConfirmError("errDixRequired");
       return;
     }
     setConfirmError(null);
@@ -443,6 +451,7 @@ export default function DixHallpikeClient() {
 
     try {
       const final = await streamEvaluation(features, {
+        lang,
         signal: controller.signal,
         onStage: (evt) => {
           if (evt.stage === "done") {
@@ -458,13 +467,13 @@ export default function DixHallpikeClient() {
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setPipelineError(
-        err instanceof Error ? err.message : "Error de conexión con el backend"
+        err instanceof Error ? { message: err.message } : { key: "connectionError" }
       );
     } finally {
       setIsStreaming(false);
       setActiveStage(null);
     }
-  }, [buildCaseFeatures, torsion, dixResult]);
+  }, [buildCaseFeatures, torsion, dixResult, lang]);
 
   const handleReset = useCallback(() => {
     stopTracking();
@@ -497,13 +506,13 @@ export default function DixHallpikeClient() {
     <div className="dix-hallpike">
       {mpError && (
         <div className="notice notice-error" role="alert">
-          <strong>Error MediaPipe:</strong> {mpError}
+          <strong>{d.mpError}</strong> {mpError}
         </div>
       )}
 
       {!mpReady && !mpError && (
         <div className="status-info">
-          <span className="spinner" /> Cargando MediaPipe FaceLandmarker...
+          <span className="spinner" /> {d.loadingMp}
         </div>
       )}
 
@@ -513,27 +522,18 @@ export default function DixHallpikeClient() {
             <div className="dh-intro">
               <div className="dh-intro-step">
                 <span className="dh-intro-number">1</span>
-                <h3>Fuente local</h3>
-                <p>
-                  Usa la webcam o carga un clip de la maniobra. El video no
-                  sale de este dispositivo.
-                </p>
+                <h3>{d.intro1Title}</h3>
+                <p>{d.intro1Body}</p>
               </div>
               <div className="dh-intro-step">
                 <span className="dh-intro-number">2</span>
-                <h3>Tracking on-device</h3>
-                <p>
-                  MediaPipe sigue el iris y estima velocidades relativas,
-                  frecuencia y fatigabilidad del nistagmo. Experimental.
-                </p>
+                <h3>{d.intro2Title}</h3>
+                <p>{d.intro2Body}</p>
               </div>
               <div className="dh-intro-step">
                 <span className="dh-intro-number">3</span>
-                <h3>El médico confirma</h3>
-                <p>
-                  La torsión no se auto-trackea: la confirmas tú, junto con el
-                  resultado de la maniobra, antes de evaluar.
-                </p>
+                <h3>{d.intro3Title}</h3>
+                <p>{d.intro3Body}</p>
               </div>
             </div>
           )}
@@ -551,7 +551,7 @@ export default function DixHallpikeClient() {
                 type="button"
                 disabled={tracking}
               >
-                Webcam
+                {d.webcam}
               </button>
               <button
                 className={`btn-secondary${sourceMode === "file" ? " active" : ""}`}
@@ -559,7 +559,7 @@ export default function DixHallpikeClient() {
                 type="button"
                 disabled={tracking}
               >
-                Video local
+                {d.localVideo}
               </button>
             </div>
 
@@ -570,13 +570,13 @@ export default function DixHallpikeClient() {
                 type="button"
                 disabled={tracking}
               >
-                Iniciar webcam
+                {d.startWebcam}
               </button>
             )}
 
             {sourceMode === "file" && (
               <label className="btn-primary btn-file">
-                Cargar video
+                {d.loadVideo}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -593,7 +593,7 @@ export default function DixHallpikeClient() {
               type="button"
               disabled={!tracking}
             >
-              Detener
+              {d.stop}
             </button>
 
             <button
@@ -601,7 +601,7 @@ export default function DixHallpikeClient() {
               onClick={handleReset}
               type="button"
             >
-              Reset
+              {d.reset}
             </button>
           </div>
 
@@ -621,58 +621,55 @@ export default function DixHallpikeClient() {
 
           <div className="dh-metrics">
             <div className="dh-metric">
-              <span className="dh-metric-label">FPS</span>
+              <span className="dh-metric-label">{d.metricFps}</span>
               <span className="dh-metric-value">{fps.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Vel. H (rel.)</span>
+              <span className="dh-metric-label">{d.metricVelH}</span>
               <span className="dh-metric-value">{velH.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Vel. V (rel.)</span>
+              <span className="dh-metric-label">{d.metricVelV}</span>
               <span className="dh-metric-value">{velV.toFixed(1)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Frecuencia (Hz)</span>
+              <span className="dh-metric-label">{d.metricFreq}</span>
               <span className="dh-metric-value">{freq.toFixed(2)}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Dirección</span>
-              <span className="dh-metric-value">{direction}</span>
+              <span className="dh-metric-label">{d.metricDirection}</span>
+              <span className="dh-metric-value">
+                {t.direction[direction as keyof Dict["direction"]] ?? direction}
+              </span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Latencia (s)</span>
+              <span className="dh-metric-label">{d.metricLatency}</span>
               <span className="dh-metric-value">{latency !== null ? latency.toFixed(2) : "-"}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Batidas</span>
+              <span className="dh-metric-label">{d.metricBeats}</span>
               <span className="dh-metric-value">{beats}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Duración (s)</span>
+              <span className="dh-metric-label">{d.metricDuration}</span>
               <span className="dh-metric-value">{duration !== null ? duration.toFixed(2) : "-"}</span>
             </div>
             <div className="dh-metric">
-              <span className="dh-metric-label">Fatigable</span>
-              <span className="dh-metric-value">{fatigable}</span>
+              <span className="dh-metric-label">{d.metricFatigable}</span>
+              <span className="dh-metric-value">
+                {t.fatigable[fatigable as keyof Dict["fatigable"]] ?? fatigable}
+              </span>
             </div>
           </div>
 
-          <p className="dh-experimental-note">
-            Tracking experimental on-device. Las velocidades son relativas (sin
-            calibración a °/s validada); no es un instrumento de medición clínica
-            certificado. El médico confirma el patrón observado.
-          </p>
+          <p className="dh-experimental-note">{d.experimentalNote}</p>
 
           <div className="dh-confirm-section">
-            <h3>Confirmación del médico (obligatoria)</h3>
-            <p className="dh-confirm-note">
-              La torsión NO se auto-trackea — el médico confirma la dirección torsional
-              observada (intervención humana, Ley 21.719).
-            </p>
+            <h3>{d.confirmHeading}</h3>
+            <p className="dh-confirm-note">{d.confirmNote}</p>
 
             <div className="dh-confirm-group">
-              <label>Dirección torsional observada:</label>
+              <label>{d.torsionLabel}</label>
               <div className="dh-radio-group">
                 <label className="dh-radio">
                   <input
@@ -682,7 +679,7 @@ export default function DixHallpikeClient() {
                     checked={torsion === "right_ear"}
                     onChange={() => setTorsion("right_ear")}
                   />
-                  Torsión hacia oído derecho
+                  {d.torsionRight}
                 </label>
                 <label className="dh-radio">
                   <input
@@ -692,7 +689,7 @@ export default function DixHallpikeClient() {
                     checked={torsion === "left_ear"}
                     onChange={() => setTorsion("left_ear")}
                   />
-                  Torsión hacia oído izquierdo
+                  {d.torsionLeft}
                 </label>
                 <label className="dh-radio">
                   <input
@@ -702,29 +699,29 @@ export default function DixHallpikeClient() {
                     checked={torsion === "none"}
                     onChange={() => setTorsion("none")}
                   />
-                  No observada
+                  {d.torsionNone}
                 </label>
               </div>
             </div>
 
             <div className="dh-confirm-group">
-              <label>Resultado Dix-Hallpike:</label>
+              <label>{d.dixLabel}</label>
               <select
                 className="dh-select"
                 value={dixResult}
                 onChange={(e) => setDixResult(e.target.value as DixHallpikeResult)}
               >
-                <option value="">— Seleccionar —</option>
-                <option value="right_positive">Derecho positivo</option>
-                <option value="left_positive">Izquierdo positivo</option>
-                <option value="bilateral_positive">Bilateral positivo</option>
-                <option value="negative">Negativo</option>
+                <option value="">{d.dixSelect}</option>
+                <option value="right_positive">{d.dixRight}</option>
+                <option value="left_positive">{d.dixLeft}</option>
+                <option value="bilateral_positive">{d.dixBilateral}</option>
+                <option value="negative">{d.dixNegative}</option>
               </select>
             </div>
 
             {confirmError && (
               <div className="notice notice-error dh-confirm-error" role="alert">
-                {confirmError}
+                {d[confirmError]}
               </div>
             )}
 
@@ -736,17 +733,17 @@ export default function DixHallpikeClient() {
             >
               {isStreaming ? (
                 <>
-                  <span className="spinner" /> Evaluando...
+                  <span className="spinner" /> {d.evaluatingShort}
                 </>
               ) : (
-                "Confirmar y evaluar"
+                d.confirmSubmit
               )}
             </button>
           </div>
 
           {(isStreaming || pipelineResult || pipelineError || completedStages.size > 0) && (
             <div className="dh-pipeline-section">
-              <h3>Pipeline de evaluación</h3>
+              <h3>{d.pipelineHeading}</h3>
 
               <PipelineRail
                 completed={completedStages}
@@ -756,7 +753,7 @@ export default function DixHallpikeClient() {
 
               {pipelineError && (
                 <div className="notice notice-error" role="alert">
-                  <strong>Error:</strong> {pipelineError}
+                  <strong>{t.common.error}</strong> {uiErrorText(pipelineError, t)}
                 </div>
               )}
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CaseFeatures } from "@/lib/types";
+import { useLanguage } from "./LanguageProvider";
 
 // Any field name that would imply raw pixels / video / biometric frames leaving
 // the device. The whole point: the outbound payload contains NONE of these.
@@ -27,6 +28,8 @@ export default function PrivacyEgressMeter({
   framesProcessed: number;
   features: CaseFeatures | null;
 }) {
+  const { t } = useLanguage();
+  const e = t.egress;
   const keys = useMemo(() => (features ? featureKeys(features) : []), [features]);
   // The EXACT bytes that would go on the wire (what fetch serializes).
   const compact = useMemo(() => (features ? JSON.stringify(features) : ""), [features]);
@@ -59,36 +62,36 @@ export default function PrivacyEgressMeter({
   return (
     <div className="privacy-egress-meter">
       <div className="egress-head">
-        <h4 className="egress-title">Privacy Egress Meter</h4>
+        <h4 className="egress-title">{e.title}</h4>
         <span className="egress-invariant">INV-2</span>
       </div>
 
       <div className="egress-stats">
         <div className="egress-stat">
           <span className="egress-value">{framesProcessed}</span>
-          <span className="egress-label">frames procesados localmente</span>
+          <span className="egress-label">{e.framesLocal}</span>
         </div>
         <div className="egress-stat">
           <span className="egress-value egress-zero">0</span>
-          <span className="egress-label">frames subidos a la red</span>
+          <span className="egress-label">{e.framesUploaded}</span>
         </div>
         <div className="egress-stat">
           <span className={`egress-value ${videoFields === 0 ? "egress-zero" : "egress-alarm"}`}>
             {videoFields}
           </span>
-          <span className="egress-label">campos de video/frame en el payload</span>
+          <span className="egress-label">{e.videoFields}</span>
         </div>
         <div className="egress-stat">
           <span className="egress-value">{bytes}</span>
-          <span className="egress-label">bytes que salen a la red</span>
+          <span className="egress-label">{e.bytes}</span>
         </div>
       </div>
 
       <div className="egress-outbound">
         <div className="egress-outbound-head">
-          <span className="egress-label">payload saliente exacto (a /api/evaluate)</span>
+          <span className="egress-label">{e.outboundHead}</span>
           {sha && (
-            <code className="egress-sha" title="SHA-256 del payload (Web Crypto, verificable)">
+            <code className="egress-sha" title={e.shaTitle}>
               sha256:{sha.slice(0, 16)}…
             </code>
           )}
@@ -96,7 +99,7 @@ export default function PrivacyEgressMeter({
         {pretty ? (
           <pre className="egress-payload">{pretty}</pre>
         ) : (
-          <span className="egress-empty">ninguna aún — procesá un clip para ver el payload</span>
+          <span className="egress-empty">{e.empty}</span>
         )}
         {keys.length > 0 && (
           <div className="egress-keys">
@@ -110,10 +113,13 @@ export default function PrivacyEgressMeter({
       </div>
 
       <p className="egress-note">
-        El video se procesa localmente (MediaPipe on-device). Lo que se ve arriba es
-        <strong> exactamente</strong> lo que sale a la red: {bytes} bytes de features
-        numéricas desidentificadas, <strong>{videoFields}</strong> campos de video/frame,
-        con hash SHA-256 verificable. No es «confiá en nosotros» — es observable (INV-2).
+        {e.notePrefix}
+        <strong>{e.noteExactly}</strong>
+        {e.noteMid}
+        {bytes}
+        {e.noteBytes}
+        <strong>{videoFields}</strong>
+        {e.noteFieldsSuffix}
       </p>
     </div>
   );

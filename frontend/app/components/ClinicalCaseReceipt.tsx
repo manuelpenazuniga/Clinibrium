@@ -3,11 +3,8 @@
 import { useCallback, useState } from "react";
 import type { AuditEvent, PipelineResult } from "@/lib/types";
 import { API_URL } from "@/lib/api";
-import {
-  DIAGNOSIS_LABELS,
-  FORCED_ACTION_LABELS,
-  URGENCY_LABELS,
-} from "@/lib/labels";
+import type { Dict } from "@/lib/i18n";
+import { useLanguage } from "./LanguageProvider";
 
 function jsonCanonical(obj: unknown): string {
   if (obj === null || typeof obj !== "object") {
@@ -37,6 +34,8 @@ export default function ClinicalCaseReceipt({
 }: {
   result: PipelineResult;
 }) {
+  const { lang, t } = useLanguage();
+  const r = t.receipt;
   const [hashStatus, setHashStatus] = useState<
     "idle" | "verifying" | "match" | "mismatch" | "server-only"
   >("idle");
@@ -75,6 +74,7 @@ export default function ClinicalCaseReceipt({
             audit_event_id: result.audit_event_id,
             decision,
             reason: decisionReason || undefined,
+            lang,
           }),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -85,7 +85,7 @@ export default function ClinicalCaseReceipt({
         setDecisionStatus("failed");
       }
     },
-    [result.audit_event_id, decisionReason]
+    [result.audit_event_id, decisionReason, lang]
   );
 
   const handleDownloadFhir = useCallback(() => {
@@ -109,19 +109,19 @@ export default function ClinicalCaseReceipt({
   return (
     <div className="clinical-receipt">
       <div className="receipt-head">
-        <span className="receipt-kicker">Clinical Case Receipt</span>
+        <span className="receipt-kicker">{r.kicker}</span>
         <code className="receipt-case-id">{result.case_id}</code>
       </div>
 
       <div className="receipt-urgency-row">
         <span className={`urgency-badge urgency-lg ${result.urgency}`}>
-          {URGENCY_LABELS[result.urgency] ?? result.urgency}
+          {t.urgency[result.urgency] ?? result.urgency}
         </span>
         {result.forced_actions.length > 0 && (
           <div className="receipt-forced-actions">
             {result.forced_actions.map((action) => (
               <span key={action} className="chip chip-danger">
-                {FORCED_ACTION_LABELS[action] ?? action}
+                {t.forcedAction[action as keyof Dict["forcedAction"]] ?? action}
               </span>
             ))}
           </div>
@@ -129,10 +129,10 @@ export default function ClinicalCaseReceipt({
       </div>
 
       <div className="receipt-section">
-        <h4>Resumen clínico</h4>
+        <h4>{r.summaryHeading}</h4>
         {result.applied_rails.length > 0 && (
           <div className="receipt-row">
-            <span className="receipt-label">Rieles disparados</span>
+            <span className="receipt-label">{r.railsFired}</span>
             <span className="receipt-value">
               {result.applied_rails.map((rail) => (
                 <code key={rail} className="rail-code">
@@ -144,7 +144,7 @@ export default function ClinicalCaseReceipt({
         )}
         {result.red_flag.red_flag_activa && result.red_flag.hits.length > 0 && (
           <div className="receipt-row">
-            <span className="receipt-label">Red flags</span>
+            <span className="receipt-label">{r.redFlags}</span>
             <span className="receipt-value">
               {result.red_flag.hits
                 .map((h) => `${h.id} (${h.label})`)
@@ -154,12 +154,12 @@ export default function ClinicalCaseReceipt({
         )}
         {topCandidates.length > 0 && (
           <div className="receipt-candidates">
-            <span className="receipt-label">Diferencial</span>
+            <span className="receipt-label">{r.differential}</span>
             <ul className="candidate-list">
               {topCandidates.map((c) => (
                 <li key={c.diagnosis} className="candidate-item">
                   <span className="candidate-name">
-                    {DIAGNOSIS_LABELS[c.diagnosis] ?? c.diagnosis}
+                    {t.diagnosis[c.diagnosis as keyof Dict["diagnosis"]] ?? c.diagnosis}
                   </span>
                   <span className="candidate-bar">
                     <span
@@ -178,7 +178,7 @@ export default function ClinicalCaseReceipt({
       </div>
 
       <div className="receipt-section">
-        <h4>Razonamiento — Claude explica, no decide</h4>
+        <h4>{r.reasoningHeading}</h4>
         {reasoning ? (
           <>
             {reasoning.explanation && (
@@ -186,12 +186,12 @@ export default function ClinicalCaseReceipt({
             )}
             {reasoning.reconciliation && (
               <p className="receipt-prose receipt-prose-secondary">
-                <strong>Conciliación:</strong> {reasoning.reconciliation}
+                <strong>{r.reconciliation}</strong> {reasoning.reconciliation}
               </p>
             )}
             {reasoning.suggested_next_steps.length > 0 && (
               <div className="receipt-row">
-                <span className="receipt-label">Próximos pasos sugeridos</span>
+                <span className="receipt-label">{r.nextSteps}</span>
                 <span className="receipt-value">
                   {reasoning.suggested_next_steps.join(" · ")}
                 </span>
@@ -200,23 +200,21 @@ export default function ClinicalCaseReceipt({
           </>
         ) : (
           <p className="receipt-prose receipt-degraded-note">
-            Razonador degradado — el pipeline completó sin Claude. Urgencia,
-            red flags y acciones forzadas son idénticas a la corrida con
-            razonador (INV-8).
+            {r.reasonerDegradedNote}
           </p>
         )}
       </div>
 
       <div className="receipt-section">
-        <h4>Procedencia</h4>
+        <h4>{r.provenanceHeading}</h4>
         <div className="receipt-row">
-          <span className="receipt-label">Modelo</span>
+          <span className="receipt-label">{r.model}</span>
           <span className="receipt-value">
             <code>{reasoning?.model_used ?? "—"}</code>
           </span>
         </div>
         <div className="receipt-row">
-          <span className="receipt-label">Reasoner</span>
+          <span className="receipt-label">{r.reasoner}</span>
           <span
             className={`status-chip ${reasonerStatus === "degraded" ? "status-degraded" : "status-ok"}`}
           >
@@ -225,9 +223,14 @@ export default function ClinicalCaseReceipt({
         </div>
         {groundingRefs.length > 0 && (
           <div className="receipt-row">
-            <span className="receipt-label">Grounding</span>
+            <span className="receipt-label">{r.grounding}</span>
             <span className="receipt-value receipt-grounding">
               {groundingRefs.join(", ")}
+              {/* The citations stay Spanish (ICVD corpus). Only in EN mode do we
+                  flag that with a small note — es mode is byte-identical. */}
+              {lang === "en" && (
+                <span className="receipt-grounding-note"> · {r.groundingNote}</span>
+              )}
             </span>
           </div>
         )}
@@ -235,7 +238,7 @@ export default function ClinicalCaseReceipt({
 
       {result.bundle_sha256 && (
         <div className="receipt-section">
-          <h4>Integridad verificable</h4>
+          <h4>{r.integrityHeading}</h4>
           <div className="receipt-row">
             <span className="receipt-label">SHA-256</span>
             <code className="hash-display">{result.bundle_sha256}</code>
@@ -249,25 +252,20 @@ export default function ClinicalCaseReceipt({
             >
               {hashStatus === "verifying" ? (
                 <>
-                  <span className="spinner" /> Verificando…
+                  <span className="spinner" /> {r.verifying}
                 </>
               ) : (
-                "Verificar en este browser"
+                r.verify
               )}
             </button>
             {hashStatus === "match" && (
-              <span className="hash-status hash-ok">
-                ✓ Íntegro — el hash coincide
-              </span>
+              <span className="hash-status hash-ok">{r.hashOk}</span>
             )}
             {hashStatus === "mismatch" && (
-              <span className="hash-status hash-fail">✗ Alterado</span>
+              <span className="hash-status hash-fail">{r.hashFail}</span>
             )}
             {hashStatus === "server-only" && (
-              <span className="hash-status hash-info">
-                Hash del servidor (canónico JS no coincide exacto — verificar
-                con backend)
-              </span>
+              <span className="hash-status hash-info">{r.hashInfo}</span>
             )}
           </div>
         </div>
@@ -277,22 +275,18 @@ export default function ClinicalCaseReceipt({
         decisionStatus !== "accepted" &&
         decisionStatus !== "rejected" && (
           <div className="receipt-section">
-            <h4>Decisión del médico</h4>
-            <p className="receipt-note">
-              La decisión queda registrada en el AuditEvent — intervención
-              humana (Ley 21.719).
-            </p>
+            <h4>{r.decisionHeading}</h4>
+            <p className="receipt-note">{r.decisionNote}</p>
             <textarea
               className="receipt-textarea"
-              placeholder="Justificación clínica (opcional)"
+              placeholder={r.decisionPlaceholder}
               value={decisionReason}
               onChange={(e) => setDecisionReason(e.target.value)}
               rows={2}
             />
             {decisionStatus === "failed" && (
               <p className="receipt-note receipt-error-note" role="alert">
-                No se pudo registrar la decisión — revisa la conexión con el
-                backend e intenta de nuevo.
+                {r.decisionFailed}
               </p>
             )}
             <div className="receipt-actions">
@@ -302,7 +296,7 @@ export default function ClinicalCaseReceipt({
                 disabled={decisionStatus === "submitting"}
                 type="button"
               >
-                {decisionStatus === "submitting" ? "Registrando…" : "Aceptar"}
+                {decisionStatus === "submitting" ? r.registering : r.accept}
               </button>
               <button
                 className="btn-reject"
@@ -310,7 +304,7 @@ export default function ClinicalCaseReceipt({
                 disabled={decisionStatus === "submitting"}
                 type="button"
               >
-                {decisionStatus === "submitting" ? "Registrando…" : "Rechazar"}
+                {decisionStatus === "submitting" ? r.registering : r.reject}
               </button>
             </div>
           </div>
@@ -318,19 +312,19 @@ export default function ClinicalCaseReceipt({
 
       {decisionAuditEvent && (
         <div className="receipt-section receipt-decision-recorded">
-          <h4>Intervención registrada</h4>
+          <h4>{r.interventionHeading}</h4>
           <div className="receipt-row">
-            <span className="receipt-label">AuditEvent</span>
+            <span className="receipt-label">{r.auditEvent}</span>
             <code className="receipt-value">{decisionAuditEvent.id}</code>
           </div>
           <div className="receipt-row">
-            <span className="receipt-label">Tipo</span>
+            <span className="receipt-label">{r.type}</span>
             <span className="receipt-value">
               {decisionAuditEvent.event_type}
             </span>
           </div>
           <div className="receipt-row">
-            <span className="receipt-label">Registrado</span>
+            <span className="receipt-label">{r.registered}</span>
             <span className="receipt-value">
               {decisionAuditEvent.occurred_at}
             </span>
@@ -345,11 +339,9 @@ export default function ClinicalCaseReceipt({
             onClick={handleDownloadFhir}
             type="button"
           >
-            Descargar Bundle FHIR R4 (.json)
+            {r.downloadFhir}
           </button>
-          <span className="receipt-footnote">
-            FHIR R4 Clinical Case Bundle — perfiles CL Core donde existen.
-          </span>
+          <span className="receipt-footnote">{r.fhirFootnote}</span>
         </div>
       )}
     </div>

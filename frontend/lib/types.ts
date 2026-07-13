@@ -178,6 +178,8 @@ export interface AuditEvent {
   outcome_summary: string;
   reasoner_status: "ok" | "degraded";
   outcome: string;
+  /** UI language the reasoner explanation was requested in ("es"|"en"); null on legacy/error paths. */
+  output_lang: string | null;
 }
 
 export interface PipelineResult {

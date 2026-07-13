@@ -1,4 +1,5 @@
 import type { CaseFeatures, PipelineResult, StageEvent, StageName } from "./types";
+import { STRINGS, type Lang } from "./i18n";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -47,6 +48,8 @@ export function parseSSEEvents(buffer: string): {
 
 export interface StreamOptions {
   killReasoner?: boolean;
+  /** UI language for backend-localized labels + reasoner output (default "es"). */
+  lang?: Lang;
   signal?: AbortSignal;
   onStage?: (event: StageEvent) => void;
 }
@@ -55,14 +58,19 @@ export interface StreamOptions {
  * POST /api/evaluate (SSE) — emits each stage via onStage and resolves with
  * the PipelineResult from the `done` event. Throws on `error` or if the
  * stream closes without a result.
+ *
+ * `lang` is passed as a query param so the backend localizes the labels it
+ * produces (red-flag hits, reasoner prose) to match the UI. It NEVER goes in
+ * the body, so it can never reach the ML engine or CaseFeatures.
  */
 export async function streamEvaluation(
   features: CaseFeatures,
-  { killReasoner = false, signal, onStage }: StreamOptions = {}
+  { killReasoner = false, lang = "es", signal, onStage }: StreamOptions = {}
 ): Promise<PipelineResult> {
-  const url = killReasoner
-    ? `${API_URL}/api/evaluate?debug_kill_reasoner=true`
-    : `${API_URL}/api/evaluate`;
+  const params = new URLSearchParams();
+  if (killReasoner) params.set("debug_kill_reasoner", "true");
+  params.set("lang", lang);
+  const url = `${API_URL}/api/evaluate?${params.toString()}`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -104,7 +112,7 @@ export async function streamEvaluation(
   }
 
   if (!result) {
-    throw new Error("No se recibió resultado del pipeline");
+    throw new Error(STRINGS[lang].common.noPipelineResult);
   }
   return result;
 }

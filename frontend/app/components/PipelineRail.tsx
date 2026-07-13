@@ -2,6 +2,8 @@
 
 import type { StageName } from "@/lib/types";
 import { STAGE_ORDER } from "@/lib/labels";
+import type { Dict } from "@/lib/i18n";
+import { useLanguage } from "./LanguageProvider";
 
 /**
  * The pipeline as a rail: deterministic nodes solid, additive ones (ML/Claude)
@@ -16,9 +18,11 @@ export default function PipelineRail({
   active: StageName | null;
   hasError?: boolean;
 }) {
+  const { t } = useLanguage();
   return (
     <ol className={`pipeline-rail${hasError ? " has-error" : ""}`}>
-      {STAGE_ORDER.map(({ key, label, note, kind }) => {
+      {STAGE_ORDER.map(({ key, kind }) => {
+        const { label, note } = t.stages[key as keyof Dict["stages"]];
         const isDone = completed.has(key);
         const isActive = active === key;
         let status = "pending";
