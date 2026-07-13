@@ -5,8 +5,10 @@ points at the repo with its own *root directory*). Postgres/pgvector is optional
 without `DATABASE_URL` the backend degrades to `InlineGrounding` (AD-10) and the
 demo is functionally identical.
 
-The `railway.json` in each directory already pins the start command and healthcheck
-(uvicorn listens on `::` because Railway's private networking is IPv6-only).
+The `railway.json` in each directory already pins the start command and healthcheck.
+uvicorn binds to `0.0.0.0` (IPv4): Railway's healthchecks and public edge connect over
+IPv4, uvicorn cannot dual-stack bind, and private networking is dual-stack (IPv4+IPv6)
+in environments created after Oct 2025 — so IPv4-only works for all three paths.
 The only things configured in the dashboard are root directory, variables and domains.
 
 ## 1. ml_engine
