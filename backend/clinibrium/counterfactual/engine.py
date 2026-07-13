@@ -43,58 +43,91 @@ class _Perturbation:
     field: str
     value: Any
     label: str  # human-readable description of the SINGLE-variable change (UI-facing, Spanish)
+    key: str  # STABLE presentation key (id) → localized via clinibrium.i18n at the API boundary
 
 
 # SINGLE-variable perturbations, clinically meaningful (they map to rails).
-# Labels are returned through the API and shown to the clinician — keep Spanish.
+# `label` is the canonical Spanish string returned as `change`; `key` is the
+# stable id the frontend/API use to localize it — the Spanish label is never
+# mutated here (engine stays language-independent).
 # TODO(clinical): provisional list to confirm/expand with the specialist (T-CLIN r2).
 _PERTURBATIONS: tuple[_Perturbation, ...] = (
-    _Perturbation("focal_signs", {FocalSign.diplopia}, "Nuevo signo focal: diplopía"),
-    _Perturbation("focal_signs", {FocalSign.dysarthria}, "Nuevo signo focal: disartria"),
-    _Perturbation("skew_deviation", True, "Skew deviation presente"),
-    _Perturbation("truncal_ataxia_severe", True, "Ataxia troncal severa (no puede caminar)"),
+    _Perturbation(
+        "focal_signs", {FocalSign.diplopia}, "Nuevo signo focal: diplopía",
+        key="focal_signs.diplopia",
+    ),
+    _Perturbation(
+        "focal_signs", {FocalSign.dysarthria}, "Nuevo signo focal: disartria",
+        key="focal_signs.dysarthria",
+    ),
+    _Perturbation(
+        "skew_deviation", True, "Skew deviation presente",
+        key="skew_deviation",
+    ),
+    _Perturbation(
+        "truncal_ataxia_severe", True, "Ataxia troncal severa (no puede caminar)",
+        key="truncal_ataxia_severe",
+    ),
     _Perturbation(
         "nystagmus_direction",
         NystagmusDirection.direction_changing,
         "Nistagmo que cambia de dirección con la mirada",
+        key="nystagmus_direction.direction_changing",
     ),
     _Perturbation(
         "nystagmus_direction",
         NystagmusDirection.torsional_pure,
         "Nistagmo espontáneo puro torsional",
+        key="nystagmus_direction.torsional_pure",
     ),
     _Perturbation(
         "headache_neck_pain_sudden_severe",
         True,
         "Cefalea/cervicalgia súbita e intensa",
+        key="headache_neck_pain_sudden_severe",
     ),
     _Perturbation(
         "hearing_loss",
         HearingLoss.sudden_unilateral,
         "Hipoacusia súbita unilateral",
+        key="hearing_loss.sudden_unilateral",
     ),
-    _Perturbation("altered_consciousness", True, "Compromiso de conciencia"),
-    _Perturbation("presyncope_syncope", True, "Presíncope o síncope"),
-    _Perturbation("neck_stiffness", True, "Rigidez de nuca"),
-    _Perturbation("recent_head_neck_trauma", True, "Trauma craneal/cervical reciente"),
+    _Perturbation(
+        "altered_consciousness", True, "Compromiso de conciencia",
+        key="altered_consciousness",
+    ),
+    _Perturbation(
+        "presyncope_syncope", True, "Presíncope o síncope",
+        key="presyncope_syncope",
+    ),
+    _Perturbation(
+        "neck_stiffness", True, "Rigidez de nuca",
+        key="neck_stiffness",
+    ),
+    _Perturbation(
+        "recent_head_neck_trauma", True, "Trauma craneal/cervical reciente",
+        key="recent_head_neck_trauma",
+    ),
 )
 
 
 @dataclass
 class Counterfactual:
     feature: str
-    change: str  # human-readable description
+    change: str  # human-readable description (canonical Spanish)
     base_urgency: str
     new_urgency: str
     urgency_changed: bool
     escalates: bool  # new_urgency more urgent than base
     forced_actions_added: list[str]
     rails_fired: list[str]
+    change_key: str = ""  # STABLE key for `change` → localized at the API boundary
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "feature": self.feature,
             "change": self.change,
+            "change_key": self.change_key,
             "base_urgency": self.base_urgency,
             "new_urgency": self.new_urgency,
             "urgency_changed": self.urgency_changed,
@@ -179,6 +212,7 @@ def analyze(features: CaseFeatures) -> WhatWouldChangeResult:
             Counterfactual(
                 feature=pert.field,
                 change=pert.label,
+                change_key=pert.key,
                 base_urgency=base_urgency.value,
                 new_urgency=new_urgency.value,
                 urgency_changed=urgency_changed,

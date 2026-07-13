@@ -28,9 +28,16 @@ CREATE TABLE IF NOT EXISTS audit_events (
     red_flag_activa  BOOLEAN NOT NULL,
     outcome_summary  TEXT NOT NULL,
     reasoner_status  TEXT NOT NULL DEFAULT 'ok',
-    outcome    TEXT NOT NULL DEFAULT 'evaluation'
+    outcome    TEXT NOT NULL DEFAULT 'evaluation',
+    output_lang TEXT
 )
 """
+
+# `CREATE TABLE IF NOT EXISTS` never alters an existing table, so columns added
+# after the first deploy need an explicit (idempotent) migration.
+_MIGRATIONS = (
+    "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS output_lang TEXT",
+)
 
 
 def _event_to_row(event: AuditEvent) -> tuple:
@@ -47,6 +54,7 @@ def _event_to_row(event: AuditEvent) -> tuple:
         event.outcome_summary,
         event.reasoner_status,
         event.outcome,
+        event.output_lang,
     )
 
 
@@ -54,12 +62,15 @@ async def _persist_postgres(event: AuditEvent, database_url: str) -> None:
     conn = await asyncpg.connect(database_url)
     try:
         await conn.execute(_TABLE_DDL)
+        for migration in _MIGRATIONS:
+            await conn.execute(migration)
         await conn.execute(
             """INSERT INTO audit_events (
                 id, occurred_at, event_type, actor, model_used,
                 input_features_hash, urgency, forced_actions,
-                red_flag_activa, outcome_summary, reasoner_status, outcome
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
+                red_flag_activa, outcome_summary, reasoner_status, outcome,
+                output_lang
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)""",
             *_event_to_row(event),
         )
     finally:

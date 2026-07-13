@@ -761,3 +761,62 @@ class TestBundleIntegrity:
             js_canonical(bundle).encode("utf-8")
         ).hexdigest()
         assert client_hash == bundle_sha256(bundle)
+
+
+# =========================================================================
+# 8. output_lang → ClinicalImpression.language (AD-19 Decisión 3,
+#    codex-audit-4 Alta 1: reasoner prose keeps its requested language and
+#    the artifact must say so; the es/None bundle stays byte-identical)
+# =========================================================================
+
+
+def _reasoning_sentinel_en() -> ReasonerOutput:
+    return ReasonerOutput(
+        explanation="SENTINEL-EN explanation grounded in [icvd-bppv-1].",
+        reconciliation="SENTINEL-EN reconciliation with the deterministic layers.",
+        suggested_next_steps=["SENTINEL-EN next step"],
+        model_used="claude-haiku-4-5-20251001",
+        reasoner_suggested_urgency=None,
+        grounding_refs=["icvd-bppv-1"],
+    )
+
+
+def test_bundle_en_reasoner_prose_is_tagged_with_language():
+    """reasoner(en) → PipelineResult → FHIR: the prose enters the notes AND
+    the ClinicalImpression is honestly tagged with FHIR ``language: "en"``."""
+    audit = _audit().model_copy(update={"output_lang": "en"})
+    bundle = to_bundle(
+        _result_bppv(reasoning=_reasoning_sentinel_en()), _features_bppv(), audit
+    )
+    ci = _resources_by_type(bundle)["ClinicalImpression"][0]
+    assert ci["language"] == "en"
+    notes = " ".join(n["text"] for n in ci["note"])
+    assert "SENTINEL-EN explanation" in notes
+    assert "SENTINEL-EN reconciliation" in notes
+    assert "SENTINEL-EN next step" in notes
+    # Deterministic content stays canonical Spanish regardless of the tag.
+    assert ci["summary"].startswith("Urgencia final:")
+
+
+def test_bundle_es_and_none_add_no_language_key_and_are_identical():
+    """Spanish/legacy paths add NO key → the default bundle is byte-identical
+    (the recorded demo depends on this)."""
+    reasoning = _reasoning_sentinel_en()
+    bundles = []
+    for lang in (None, "es"):
+        audit = _audit().model_copy(update={"output_lang": lang})
+        bundle = to_bundle(_result_bppv(reasoning=reasoning), _features_bppv(), audit)
+        ci = _resources_by_type(bundle)["ClinicalImpression"][0]
+        assert "language" not in ci
+        bundles.append(bundle)
+    assert json.dumps(bundles[0], sort_keys=True) == json.dumps(bundles[1], sort_keys=True)
+
+
+def test_bundle_en_degraded_reasoner_is_not_tagged():
+    """No reasoner prose → nothing English in the bundle → no language tag,
+    even if the UI requested en."""
+    audit = _audit(model_used=None).model_copy(update={"output_lang": "en"})
+    bundle = to_bundle(_result_bppv(reasoning=None), _features_bppv(), audit)
+    ci = _resources_by_type(bundle)["ClinicalImpression"][0]
+    assert "language" not in ci
+    assert any("degradado" in n["text"] for n in ci["note"])

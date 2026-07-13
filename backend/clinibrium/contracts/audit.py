@@ -28,3 +28,9 @@ class AuditEvent(BaseModel):
     outcome_summary: str
     reasoner_status: Literal["ok", "degraded"] = "ok"  # INV-8 marker
     outcome: str = "evaluation"
+    # Additive presentation metadata: the UI language the reasoner explanation
+    # was requested in ("es"|"en"). Does NOT affect any safety decision or enum.
+    # The reasoner prose inside the FHIR ClinicalImpression follows this
+    # language (the resource is tagged `language: "en"` in that case); the
+    # deterministic FHIR content stays Spanish. None on legacy/error paths.
+    output_lang: str | None = None

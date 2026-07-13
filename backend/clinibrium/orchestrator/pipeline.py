@@ -106,6 +106,7 @@ async def evaluate(
     now: datetime | None = None,
     on_stage: StageHook | None = None,
     kill_reasoner: bool = False,
+    lang: str = "es",
 ) -> PipelineResult:
     """Evaluates a complete clinical case — end-to-end VertigoDx pipeline.
 
@@ -164,6 +165,7 @@ async def evaluate(
                 ml,
                 chunks,
                 recording_mode=recording_mode,
+                lang=lang,
             )
         if reasoning is not None:
             reasoner_status = "ok"
@@ -193,6 +195,7 @@ async def evaluate(
             reasoner_status=reasoner_status,
             outcome="evaluation",
             occurred_at=occurred_at,
+            lang=lang,
         )
         # INV-4: the AuditEvent has ALREADY been emitted. Set `audited` BEFORE
         # any other operation (model_copy) so that a later failure does NOT
@@ -212,6 +215,7 @@ async def evaluate(
                     red_flag=result.red_flag if result is not None else None,
                     reasoner_status=reasoner_status,
                     occurred_at=occurred_at,
+                    lang=lang,
                 )
             except Exception:
                 logger.exception(
@@ -227,6 +231,7 @@ async def _emit_error_event(
     red_flag: RedFlagResult | None,
     reasoner_status: str,
     occurred_at: datetime,
+    lang: str | None = None,
 ) -> None:
     """Emits a fail-safe AuditEvent when the pipeline fails.
 
@@ -255,6 +260,7 @@ async def _emit_error_event(
         reasoner_status=reasoner_status,
         outcome="error",
         occurred_at=occurred_at,
+        lang=lang,
     )
 
 

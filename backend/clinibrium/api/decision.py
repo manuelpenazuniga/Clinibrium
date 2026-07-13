@@ -10,6 +10,7 @@ Emitting ITS own AuditEvent does NOT violate INV-4 (which is per-evaluation).
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -59,6 +60,9 @@ class DecisionRequest(BaseModel):
     audit_event_id: str
     decision: str
     reason: str | None = None
+    # UI language the decision was taken in (additive audit metadata only;
+    # validated to reject anything except es/en). Does NOT affect the decision.
+    lang: Literal["es", "en"] = "es"
 
 
 @router.post("/api/decision", response_model=AuditEvent)
@@ -86,4 +90,5 @@ async def decision_endpoint(body: DecisionRequest) -> AuditEvent:
         audit_event_id=body.audit_event_id,
         decision=decision,
         reason=body.reason,
+        lang=body.lang,
     )

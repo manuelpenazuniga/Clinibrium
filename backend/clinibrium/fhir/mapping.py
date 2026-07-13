@@ -702,6 +702,7 @@ def _build_clinical_impression(
     result: PipelineResult,
     subject_urn: str,
     now: datetime,
+    output_lang: str | None = None,
 ) -> dict[str, Any]:
     """ClinicalImpression — the result: candidates, urgency, reasoning.
 
@@ -709,6 +710,14 @@ def _build_clinical_impression(
     "reasoner unavailable (degraded)" note (Spanish, clinician-facing)
     and the ``extension-reasoner-degraded`` extension so the audit
     can see it.
+
+    ``output_lang`` (AD-19 precision, codex-audit-4 Alta 1): the reasoner
+    prose embedded in ``note`` keeps the language it was REQUESTED in.
+    The deterministic content (summary, findings, extensions) is always
+    canonical Spanish. When the prose was requested in English, the
+    resource is tagged with FHIR ``language: "en"`` so the artifact is
+    honest about it; the Spanish/default path adds NO key and stays
+    byte-identical to the recorded demo.
     """
     ciid = _id_for(case_id, "ClinicalImpression")
     findings: list[dict[str, Any]] = [
@@ -764,6 +773,9 @@ def _build_clinical_impression(
     return _resource(
         "ClinicalImpression",
         id=ciid,
+        language=(
+            "en" if output_lang == "en" and result.reasoning is not None else None
+        ),
         meta={"profile": [_PROFILE_CLINICAL_IMPRESSION]},
         status="completed",
         code={
@@ -940,9 +952,12 @@ def to_bundle(
     # Observations
     observations = _build_observations(case_id, features, subject_urn, now)
 
-    # ClinicalImpression
+    # ClinicalImpression. The reasoner prose in its notes keeps the language
+    # it was requested in (audit.output_lang); the resource is tagged with
+    # FHIR `language` when that was English. Spanish/None adds no key, so the
+    # default bundle stays byte-identical (AD-19 precision).
     clinical_impression = _build_clinical_impression(
-        case_id, result, subject_urn, now
+        case_id, result, subject_urn, now, output_lang=audit.output_lang
     )
 
     # DetectedIssue + Flag for each red flag

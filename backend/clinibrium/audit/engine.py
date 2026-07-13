@@ -36,6 +36,7 @@ def build_audit_event(
     reasoner_status: str,
     outcome: str,
     occurred_at: datetime,
+    lang: str | None = None,
 ) -> AuditEvent:
     """Builds an immutable AuditEvent. Pure function — no I/O or side effects.
 
@@ -45,6 +46,9 @@ def build_audit_event(
         reasoner_status: "ok" if the reasoner answered, "degraded" if not.
         outcome: "evaluation" for the normal pipeline, "error" for failure.
         occurred_at: injectable timestamp (NO buried datetime.now()).
+        lang: UI language the explanation was requested in (additive metadata;
+            does NOT affect any safety decision. The reasoner prose in the FHIR
+            ClinicalImpression follows it — see AD-19 precision).
     """
     return AuditEvent(
         id=str(uuid.uuid4()),
@@ -59,6 +63,7 @@ def build_audit_event(
         outcome_summary=_build_outcome_summary(result, outcome),
         reasoner_status=reasoner_status,  # type: ignore[arg-type]
         outcome=outcome,
+        output_lang=lang,
     )
 
 
@@ -81,6 +86,7 @@ async def emit(
     reasoner_status: str,
     outcome: str,
     occurred_at: datetime,
+    lang: str | None = None,
 ) -> AuditEvent:
     """Builds the AuditEvent, persists it (best-effort) and returns it.
 
@@ -94,6 +100,7 @@ async def emit(
         reasoner_status=reasoner_status,
         outcome=outcome,
         occurred_at=occurred_at,
+        lang=lang,
     )
     await persist_audit(event)
     return event
@@ -105,6 +112,7 @@ async def emit_decision(
     decision: str,
     reason: str | None = None,
     occurred_at: datetime | None = None,
+    lang: str | None = None,
 ) -> AuditEvent:
     """Emits a clinical-decision AuditEvent (AD-4, human intervention).
 
@@ -137,6 +145,7 @@ async def emit_decision(
         outcome_summary=outcome_text,
         reasoner_status="degraded",
         outcome=decision,
+        output_lang=lang,
     )
 
     await persist_audit(event)
