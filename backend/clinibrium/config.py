@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # forces Opus 4.8 for demos / gold-set evaluation.
     RECORDING_MODE: bool = False
 
+    # P1.4: gate for demo-only / debug features (e.g. the "Kill Claude"
+    # ?debug_kill_reasoner backdoor). Default False → those features return 403
+    # in a normal/public deployment. Enable for the demo or recording.
+    DEMO_MODE: bool = False
+
 
 _settings: Settings | None = None
 

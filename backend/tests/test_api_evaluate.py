@@ -432,6 +432,10 @@ def test_settings_has_recording_mode_server_side(monkeypatch):
 
 async def test_evaluate_sse_debug_kill_reasoner_yields_reasoning_none(monkeypatch):
     """debug_kill_reasoner=true → done event with reasoning=None, reasoner not called."""
+    import clinibrium.config as _cfg
+
+    # P1.4: the Kill-Claude backdoor requires demo/recording mode.
+    monkeypatch.setattr(_cfg, "_settings", _cfg.Settings(DEMO_MODE=True))
     mock_reasoner = AsyncMock()
     monkeypatch.setattr("clinibrium.reasoner.reason", mock_reasoner)
     monkeypatch.setattr("clinibrium.ml_client.predict", AsyncMock(return_value=None))
@@ -465,9 +469,48 @@ async def test_evaluate_sse_debug_kill_reasoner_yields_reasoning_none(monkeypatc
     assert events_capture[0].reasoner_status == "degraded"
 
 
+async def test_evaluate_debug_kill_reasoner_forbidden_in_normal_mode(monkeypatch):
+    """P1.4: without DEMO_MODE/RECORDING_MODE, the Kill-Claude backdoor → 403."""
+    import clinibrium.config as _cfg
+
+    monkeypatch.setattr(_cfg, "_settings", _cfg.Settings(DEMO_MODE=False, RECORDING_MODE=False))
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/evaluate?debug_kill_reasoner=true", json=_bppv_benign()
+        )
+    assert resp.status_code == 403
+    # sin el flag de debug, la evaluación normal sigue funcionando
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with client.stream("POST", "/api/evaluate", json=_bppv_benign()) as r2:
+            async for _ in r2.aiter_text():
+                pass
+        assert r2.status_code == 200
+
+
 # =============================================================================
 # POST /api/decision — human intervention recorded (AD-4)
 # =============================================================================
+
+
+async def test_decision_rejects_pii_reason(monkeypatch):
+    """P1.3: a reason that looks like it carries PII (RUT/id) → 422 (fail-closed)."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "clinibrium.audit.engine.persist_audit", AsyncMock(return_value=None)
+    )
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for bad in ("Paciente RUT 12.345.678-5", "contacto juan@mail.com", "ficha 00123456"):
+            resp = await client.post(
+                "/api/decision",
+                json={"audit_event_id": "evt-x", "decision": "accept", "reason": bad},
+            )
+            assert resp.status_code == 422, f"debió rechazar PII: {bad!r}"
 
 
 async def test_decision_accept_returns_audit_event_clinician(monkeypatch):

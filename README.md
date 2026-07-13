@@ -86,4 +86,5 @@ deterministic runtime makes them trustworthy.*
 - `docker-compose.yml` — `pgvector/pgvector:pg16`. · `check.sh` — CI gate.
 
 ## License
-MIT — see [LICENSE](LICENSE). Not for clinical use; see Limitations above.
+Apache-2.0 — see [LICENSE](LICENSE) (explicit patent grant) and [NOTICE](NOTICE)
+(third-party and prior-art attributions). Not for clinical use; see Limitations above.

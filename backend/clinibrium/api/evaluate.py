@@ -23,7 +23,7 @@ import json
 import logging
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from clinibrium.config import get_settings
@@ -136,7 +136,21 @@ async def evaluate_endpoint(
 
     `recording_mode` is NEVER read from the body — it comes from `Settings`
     (AD-6 / hard rule 2).
+
+    P1.4: `debug_kill_reasoner` is a demo/debug backdoor. It is only honored when
+    `DEMO_MODE` or `RECORDING_MODE` is set server-side; otherwise it returns 403
+    (the backdoor is not exposed in a normal/public deployment).
     """
+    if debug_kill_reasoner:
+        settings = get_settings()
+        if not (settings.DEMO_MODE or settings.RECORDING_MODE):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "debug_kill_reasoner is only available in demo/recording mode "
+                    "(set DEMO_MODE=true or RECORDING_MODE=true)"
+                ),
+            )
     return StreamingResponse(
         _stream_pipeline(features, kill_reasoner=debug_kill_reasoner),
         media_type="text/event-stream",
