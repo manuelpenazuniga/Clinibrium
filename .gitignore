@@ -24,3 +24,6 @@ audit_events.jsonl
 
 # Internal explainer doc (local only)
 docs/FUNCIONAMIENTO_CLINIBRIUM.md
+
+# Local draft of the written submission summary
+docs/write-up.md
