@@ -129,7 +129,7 @@ async def reason(
     recording_mode: bool = False,
     lang: str = "es",
     client: AsyncAnthropic | None = None,  # pyright: ignore[reportInvalidTypeForm]
-    timeout_s: float = 20.0,
+    timeout_s: float = 60.0,
 ) -> ReasonerOutput | None:
     model = pick_model(red_flag, recording_mode=recording_mode)
 
@@ -160,7 +160,10 @@ async def reason(
             async with asyncio.timeout(timeout_s):
                 resp = await client.messages.parse(
                     model=model,
-                    max_tokens=1200,
+                    # max_tokens caps thinking + text combined; Opus 4.8 in
+                    # adaptive-thinking mode needs headroom or the structured
+                    # JSON truncates mid-string (ValidationError → degrade).
+                    max_tokens=16000,
                     messages=messages,  # type: ignore[arg-type]
                     system=system_prompt,
                     output_format=_LLMReasoning,
