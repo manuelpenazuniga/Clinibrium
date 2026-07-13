@@ -23,6 +23,7 @@ import clinibrium.audit.engine as _audit_engine
 import clinibrium.ml_client as _ml_client
 import clinibrium.rails as _rails
 import clinibrium.reasoner as _reasoner
+from clinibrium.config import get_settings
 from clinibrium.contracts.enums import ForcedAction, Urgency
 from clinibrium.contracts.features import CaseFeatures
 from clinibrium.contracts.results import (
@@ -147,7 +148,9 @@ async def evaluate(
         await _notify(on_stage, "differential", _differential_payload(differential))
 
         # ── Step 3: optional ML (track B) — None if B is down (INV-6) ──────
-        ml = await _ml_client.predict(features)
+        ml = await _ml_client.predict(
+            features, timeout_s=get_settings().ML_PREDICT_TIMEOUT_S
+        )
         await _notify(on_stage, "ml", _ml_payload(ml))
 
         # ── Step 4: Grounding retrieval (AD-12) ─────────────────────────────

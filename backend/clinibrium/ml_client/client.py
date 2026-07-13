@@ -69,28 +69,28 @@ async def predict(
             data = resp.json()
             return PredictResponse.model_validate(data)
     except httpx.TimeoutException:
-        logger.info(
+        logger.warning(
             "ml_client.predict: timeout %.2fs towards %s → degrade (None)",
             timeout_s,
             url,
         )
         return None
     except httpx.HTTPStatusError as exc:
-        logger.info(
+        logger.warning(
             "ml_client.predict: HTTP %s from %s → degrade (None)",
             exc.response.status_code,
             url,
         )
         return None
     except httpx.HTTPError as exc:
-        logger.info(
+        logger.warning(
             "ml_client.predict: network error (%s) towards %s → degrade (None)",
             type(exc).__name__,
             url,
         )
         return None
     except Exception as exc:  # noqa: BLE001 — deliberately broad degradation
-        logger.info(
+        logger.warning(
             "ml_client.predict: unexpected exception (%s) → degrade (None)",
             type(exc).__name__,
         )
