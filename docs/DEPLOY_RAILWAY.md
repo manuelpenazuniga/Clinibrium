@@ -6,10 +6,22 @@ without `DATABASE_URL` the backend degrades to `InlineGrounding` (AD-10) and the
 demo is functionally identical.
 
 The `railway.json` in each directory already pins the start command and healthcheck.
-uvicorn binds to `0.0.0.0` (IPv4): Railway's healthchecks and public edge connect over
-IPv4, uvicorn cannot dual-stack bind, and private networking is dual-stack (IPv4+IPv6)
-in environments created after Oct 2025 — so IPv4-only works for all three paths.
 The only things configured in the dashboard are root directory, variables and domains.
+
+## Hard-won gotchas (all hit in production — read before touching anything)
+
+1. **The private-networking hostname keeps the service's ORIGINAL name.** Renaming a
+   service to `ml-engine` does not update its internal domain — check the real one in
+   the service's Settings → Networking (ours stayed `clinibrium.railway.internal`) and
+   point `ML_PREDICT_URL` at that, or edit the internal domain to match. A wrong name
+   fails as an instant `ConnectError` (DNS), indistinguishable from a refused bind.
+2. **Config changes stage; they do NOT apply until a (re)deploy**, and a git-push
+   rebuild does not pick up changes staged after it started. After editing variables
+   or settings, hit Deploy in the dashboard and confirm no staged changes remain.
+3. **ml_engine must serve dual-stack**: Railway healthchecks connect over IPv4, the
+   backend reaches it over the private network (IPv6). uvicorn can only bind one
+   stack, so ml_engine serves with hypercorn (`--bind [::]:$PORT` accepts both).
+   The backend/frontend only receive edge traffic, so plain uvicorn IPv4 is fine there.
 
 ## 1. ml_engine
 
@@ -28,8 +40,10 @@ The only things configured in the dashboard are root directory, variables and do
   - `ANTHROPIC_API_KEY=sk-...`
   - `DEMO_MODE=true` (enables the Kill-Claude toggle)
   - `RECORDING_MODE=true` (forces Opus for ambulatory, as in `demo/start.sh`)
-  - `ML_PREDICT_URL=http://ml-engine.railway.internal:8001` — adjust `ml-engine`
-    to the actual service name in Railway.
+  - `ML_PREDICT_URL=http://<internal-domain>:8001` — the ml_engine service's
+    internal domain as shown in its Settings → Networking (see gotcha 1: it is
+    NOT necessarily the service's current name; ours is
+    `clinibrium.railway.internal`).
   - `CORS_ORIGINS=https://<frontend>.up.railway.app` — the frontend's public URL,
     no trailing slash. Accepts a comma-separated list.
   - Do NOT set `DATABASE_URL` (unless deploying pgvector; see below).
