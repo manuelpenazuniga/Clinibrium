@@ -1,42 +1,43 @@
-# Contrato `POST /predict` (track B — ML opcional) — **CONGELADO**
+# `POST /predict` contract (track B — optional ML) — **FROZEN**
 
-> **Contrato congelado 2026-07-10.** Cambios requieren acuerdo explícito de
-> ambas personas (regla dura v7.3 §9). Esto es lo que persona 2 (ML) puede
-> implementar offline sin bloquear a persona 1 (A).
+> **Contract frozen 2026-07-10.** Changes require explicit agreement from
+> both people (hard rule, v7.3 §9). This is what person 2 (ML) can
+> implement offline without blocking person 1 (A).
 
 ---
 
-## Posición en el sistema
+## Position in the system
 
 ```
-RedFlagEngine → DifferentialEngine → ML? (opcional, este contrato) →
-                Claude razonador → rails + AuditEvent → médico decide
+RedFlagEngine → DifferentialEngine → ML? (optional, this contract) →
+                Claude reasoner → rails + AuditEvent → the physician decides
 ```
 
-- **B es ADITIVO**: A lo llama solo si está disponible.
-- **A NUNCA depende de que B esté vivo.** Si B no está, A completa igual
-  con `ml=None` (ver `PredictResponse | None` en `PipelineResult`).
-- **B NO decide urgencia ni red flags** — esos los sellan `RedFlagEngine`
-  y los rieles (INV-1, INV-3, INV-5). B es un input más para el razonador.
+- **B is ADDITIVE**: A calls it only if it is available.
+- **A NEVER depends on B being alive.** If B is down, A still completes
+  with `ml=None` (see `PredictResponse | None` in `PipelineResult`).
+- **B does NOT decide urgency or red flags** — those are sealed by
+  `RedFlagEngine` and the rails (INV-1, INV-3, INV-5). B is just one more
+  input for the reasoner.
 
 ## Endpoint
 
-| Campo        | Valor                                  |
+| Field        | Value                                  |
 |--------------|----------------------------------------|
-| Método       | `POST`                                 |
-| Ruta         | `/predict`                             |
-| Content-Type | `application/json` (request y response)|
-| Timeout cliente | `2.0 s` (configurable vía `ML_PREDICT_TIMEOUT_S`) |
+| Method       | `POST`                                 |
+| Path         | `/predict`                             |
+| Content-Type | `application/json` (request and response)|
+| Client timeout | `2.0 s` (configurable via `ML_PREDICT_TIMEOUT_S`) |
 
-Base URL configurable vía `ML_PREDICT_URL` en `Settings` (env var del
-mismo nombre). Si es `None`, el cliente degrada inmediatamente a `None`
-y el pipeline A sigue funcionando (INV-6).
+Base URL configurable via `ML_PREDICT_URL` in `Settings` (env var of the
+same name). If it is `None`, the client degrades immediately to `None`
+and pipeline A keeps working (INV-6).
 
 ## Request — JSON
 
-Body: dump de `clinibrium.contracts.CaseFeatures` con
-`model_dump(mode="json")`. El cliente se encarga de serializar enums
-como string y sets como list.
+Body: dump of `clinibrium.contracts.CaseFeatures` via
+`model_dump(mode="json")`. The client is responsible for serializing
+enums as strings and sets as lists.
 
 ```json
 {
@@ -80,10 +81,10 @@ como string y sets como list.
 }
 ```
 
-Todos los campos son los del allowlist `NETWORK_SAFE_FIELDS` (ver
-`clinibrium/contracts/features.py`). El servidor NO debe esperar ni
-aceptar PII, texto libre, ni video — el cliente garantiza el allowlist
-y el validador del reasoner (INV-2) lo refuerza en el otro extremo.
+All fields come from the `NETWORK_SAFE_FIELDS` allowlist (see
+`clinibrium/contracts/features.py`). The server must NOT expect nor
+accept PII, free text, or video — the client guarantees the allowlist
+and the reasoner's validator (INV-2) enforces it on the other end.
 
 ## Response — JSON (200 OK)
 
@@ -113,13 +114,13 @@ y el validador del reasoner (INV-2) lo refuerza en el otro extremo.
 }
 ```
 
-| Campo                       | Tipo                  | Notas                                                                                          |
+| Field                       | Type                  | Notes                                                                                          |
 |-----------------------------|-----------------------|------------------------------------------------------------------------------------------------|
-| `probabilities`             | `dict[str, float]`    | **Claves = valores del enum `Diagnosis`** (ver tabla abajo). Suma ≈ 1.0; cada valor ∈ [0, 1]. |
-| `shap`                      | `dict[str, float] \| null` | SHAP por feature (mismo vocabulario que `CaseFeatures`, kebab/snake libre). `null` si B no calcula SHAP. |
-| `model_version`             | `str`                 | Identificador de la versión del modelo. Aparece en `AuditEvent` y logs.                        |
+| `probabilities`             | `dict[str, float]`    | **Keys = values of the `Diagnosis` enum** (table below). Sum ≈ 1.0; each value ∈ [0, 1]. |
+| `shap`                      | `dict[str, float] \| null` | SHAP per feature (same vocabulary as `CaseFeatures`, kebab/snake free-form). `null` if B does not compute SHAP. |
+| `model_version`             | `str`                 | Model version identifier. Appears in `AuditEvent` and logs.                        |
 
-### Claves válidas de `probabilities` (enum `Diagnosis`)
+### Valid `probabilities` keys (`Diagnosis` enum)
 
 ```
 bppv_posterior
@@ -133,41 +134,41 @@ cardiogenic_suspected
 undetermined
 ```
 
-B debe emitir al menos una clave; el cliente no exige que estén todas
-(admite sub-sets) pero el modelo Pydantic `PredictResponse` no valida
-las claves — se confía en el contrato social entre A y B.
+B must emit at least one key; the client does not require all of them
+(subsets are accepted) but the `PredictResponse` Pydantic model does not
+validate the keys — this relies on the social contract between A and B.
 
-## Códigos de error
+## Error codes
 
-| Status | Significado para el cliente                                  |
+| Status | Meaning for the client                                       |
 |--------|--------------------------------------------------------------|
-| 2xx    | Éxito. Body parseado como `PredictResponse`.                 |
-| 4xx/5xx| Error del servidor. Cliente degrada a `None` (INV-6).        |
-| Timeout| Cliente degrada a `None` tras `ML_PREDICT_TIMEOUT_S`.        |
-| Red    | Cualquier excepción (`httpx.HTTPError`, `ConnectionError`, etc.) → `None`. |
+| 2xx    | Success. Body parsed as `PredictResponse`.                  |
+| 4xx/5xx| Server error. Client degrades to `None` (INV-6).            |
+| Timeout| Client degrades to `None` after `ML_PREDICT_TIMEOUT_S`.     |
+| Network| Any exception (`httpx.HTTPError`, `ConnectionError`, etc.) → `None`. |
 
-El cliente NUNCA levanta excepciones por fallas de B. Si B está mal
-implementado y devuelve 200 con JSON inválido, también degrada a `None`
-(log info, no error — es comportamiento esperado del degradation path).
+The client NEVER raises on B failures. If B is badly implemented and
+returns 200 with invalid JSON, the client also degrades to `None`
+(info log, not error — that is expected behavior of the degradation path).
 
-## Semántica (lo que B puede y NO puede hacer)
+## Semantics (what B can and canNOT do)
 
-✅ **Puede**:
-- Devolver una distribución de probabilidad sobre los diagnósticos
-  definidos en `Diagnosis`.
-- Acompañar la predicción con valores SHAP por feature para explicabilidad.
-- Declarar su `model_version` para reproducibilidad/auditoría.
+✅ **Can**:
+- Return a probability distribution over the diagnoses defined in
+  `Diagnosis`.
+- Attach per-feature SHAP values to the prediction for explainability.
+- Declare its `model_version` for reproducibility/auditing.
 
-❌ **NO puede**:
-- Fijar `urgency` (lo sellan `RedFlagEngine` + rails, INV-1).
-- Anular `red_flag_activa` (INV-1, INV-5).
-- Pedir ni recibir PII, texto libre, ni video (INV-2, INV-7).
-- Asumir que el cliente reintentará — el contrato es fire-and-forget:
-  falla ⇒ `None`, el pipeline sigue.
+❌ **CanNOT**:
+- Set `urgency` (sealed by `RedFlagEngine` + rails, INV-1).
+- Override `red_flag_activa` (INV-1, INV-5).
+- Request or receive PII, free text, or video (INV-2, INV-7).
+- Assume the client will retry — the contract is fire-and-forget:
+  failure ⇒ `None`, the pipeline continues.
 
-## Historial
+## History
 
-- **2026-07-10** — Contrato congelado (v7.3 §9, AD-3). Cliente
-  `ml_client.predict()` con degradación elegante implementado.
-  Stub dev en `clinibrium.ml_client.stub_server` para validar la
-  ruta feliz sin el servicio real.
+- **2026-07-10** — Contract frozen (v7.3 §9, AD-3). Client
+  `ml_client.predict()` with graceful degradation implemented.
+  Dev stub in `clinibrium.ml_client.stub_server` to validate the
+  happy path without the real service.

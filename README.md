@@ -1,81 +1,89 @@
 # Clinibrium
 
-> **Clinibrium** (producto) · **VertigoDx Engine** (motor clínico otoneurológico).
-> Apoyo diagnóstico de vértigo que demuestra cómo **fallar de forma segura**:
-> las capas deterministas fijan la seguridad, Claude explica y **el médico decide**.
-> Prototipo de hackathon — **no destinado a uso clínico real**.
+> **Clinibrium** (product) · **VertigoDx Engine** (otoneurological clinical engine).
+> Vertigo diagnostic support that demonstrates how to **fail safely**:
+> deterministic layers pin down safety, Claude explains, and **the physician decides**.
+> Hackathon prototype — **not intended for real clinical use**.
 
-Monolito modular: backend FastAPI (async) + frontend Next.js/TypeScript + PostgreSQL 16 con
-`pgvector`. El razonamiento peligroso **nunca** es criterio del LLM: reglas deterministas de
-red flags + rieles duros deciden la urgencia; Claude concilia y explica. Cada evaluación emite
-**exactamente 1 `AuditEvent`** (garantizado) y el artefacto FHIR es **tamper-evident** vía
-hash SHA-256. El video ocular se procesa **on-device**; solo cruzan la red features
-estructuradas desidentificadas.
+Modular monolith: FastAPI backend (async) + Next.js/TypeScript frontend + PostgreSQL 16 with
+`pgvector`. Dangerous reasoning is **never** left to the LLM: deterministic red-flag rules +
+hard rails decide urgency; Claude reconciles and explains. Every evaluation emits
+**exactly 1 `AuditEvent`** (guaranteed) and the FHIR artifact is **tamper-evident** via
+SHA-256 hash. Ocular video is processed **on-device**; only de-identified structured
+features ever cross the network.
 
-## Divulgación de prior-art
-> La lógica clínica (criterios ICVD, reglas de red flags, arquitectura de capas) proviene de
-> investigación previa del equipo (roadmap v7.2, 105+ referencias auditadas) y de un prototipo
-> anterior en el Gemma Hackathon. **Todo el código se construyó durante Built with Claude:
-> Life Sciences (7–13 julio 2026) con Claude Code.**
+> **Note on language**: the clinical UI is intentionally in Spanish — the product targets
+> Chilean clinicians. Code, comments, and documentation are in English.
 
-## Arquitectura
+## Prior-art disclosure
+> The clinical logic (ICVD criteria, red-flag rules, layered architecture) comes from the
+> team's prior research (roadmap v7.2, 105+ audited references) and an earlier prototype
+> built for the Gemma Hackathon. **All code was built during Built with Claude:
+> Life Sciences (July 7–13, 2026) with Claude Code.**
+
+## Architecture
 ```
 CaseFeatures → RedFlagEngine ⟂ DifferentialEngine → ML?(track B) → grounding(RAG) →
-  Reasoner(Claude, pick_model Opus/Haiku) → Rails(invariantes duros) → AuditEvent → PipelineResult + Bundle FHIR
+  Reasoner(Claude, pick_model Opus/Haiku) → Rails(hard invariants) → AuditEvent → PipelineResult + FHIR Bundle
 ```
-- `RedFlagEngine` **físicamente separado** de `DifferentialEngine` (régimen regulatorio).
-- **Rieles** (aplicados DESPUÉS de Claude, ganan siempre): `red_flag ⇒ urgencia inmediata`,
-  monotonía de seguridad, bloqueo de Epley, incertidumbre → escalar.
-- **Degradación elegante**: si el ML (track B) o Claude caen, el pipeline completa y la
-  **seguridad no cambia** (la deciden las capas deterministas).
-- Ver `ARCHITECTURE.md` (decisiones AD-1..14, invariantes INV-1..8).
+- `RedFlagEngine` is **physically separated** from `DifferentialEngine` (regulatory regime).
+- **Rails** (applied AFTER Claude, always win): `red_flag ⇒ immediate urgency`,
+  safety monotonicity, Epley blocking, uncertainty → escalate.
+- **Graceful degradation**: if the ML (track B) or Claude goes down, the pipeline still
+  completes and **safety does not change** (the deterministic layers own it).
 
-## Estado
-Backend + frontend + módulo Dix-Hallpike Tier 1 **implementados, testeados (INV-1..8) y
-verificados end-to-end**. Demo funcional. Los **rieles de seguridad** (invariantes A–E: red
-flags centrales, otras urgencias, contraindicaciones Dix-Hallpike, bloqueo de Epley, epistémicas
-— incl. A9/A10 defensivas) fueron revisados y **aceptados por un otorrino super-especialista**
-(T-CLIN ronda 1, `docs/CLINICAL_VALIDATION_PENDING.md`). **Pendiente (ronda 2)**: pesos
-diagnósticos del *differential*, umbral A7 (edad + riesgo vascular), mensajes al médico y revisión
-médico-legal. Track B (ML) opcional. El sistema **no está clínicamente validado como conjunto**
-(pesos provisionales, sin validación prospectiva).
+## Status
+Backend + frontend + Dix-Hallpike Tier 1 module **implemented, tested (INV-1..8) and
+verified end-to-end**. Working demo. The **safety rails** (invariant families A–E: core red
+flags, other urgencies, Dix-Hallpike contraindications, Epley blocking, epistemic — incl.
+defensive A9/A10) were reviewed and **accepted by a subspecialist otolaryngologist**
+(T-CLIN round 1). **Pending (round 2)**: differential diagnostic weights, A7 threshold
+(age + vascular risk), physician-facing messages, and medico-legal review. Track B (ML) is
+optional. The system is **not clinically validated as a whole** (provisional weights, no
+prospective validation).
 
 ## Quick start
 ```bash
-# Backend (:8000). Con ANTHROPIC_API_KEY el reasoner funciona; sin ella, degrada elegante.
+# Backend (:8000). With ANTHROPIC_API_KEY the reasoner works; without it, graceful degradation.
 cd backend && python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ANTHROPIC_API_KEY=<key> .venv/bin/python -m uvicorn clinibrium.api:app --port 8000
 # Frontend (:3000)
 cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
-# Gate completo: ./check.sh   ·   Demo: ver docs/DEMO_GUION.md
+# Full gate: ./check.sh
 ```
 
-## Privacidad
-- El video/frames se procesan **localmente** (MediaPipe on-device); **0 frames se envían** al backend.
-- A Claude solo llegan features estructuradas desidentificadas (validador *fail-closed* INV-2).
-- Cada llamada ⇒ 1 `AuditEvent`; el Bundle FHIR tiene hash verificable.
-- (El módulo carga assets de MediaPipe desde CDN; el *procesamiento* del video es local. No es un modo offline completo.)
+## Privacy
+- Video/frames are processed **locally** (MediaPipe on-device); **0 frames are sent** to the backend.
+- Claude only receives de-identified structured features (*fail-closed* validator, INV-2).
+- Every call ⇒ 1 `AuditEvent`; the FHIR Bundle carries a verifiable hash.
+- (The module loads MediaPipe assets from a CDN; video *processing* is local. This is not a fully offline mode.)
 
-## Limitaciones (honestas)
-- **No aprobado para uso clínico.** Los rieles de seguridad (invariantes A–E) están **firmados por el otorrino super-especialista** (r1); los **pesos diagnósticos y el umbral A7 siguen provisionales** (r2). Sin validación prospectiva.
-- El tracking de nistagmo es **experimental** (velocidades relativas, sin calibración a °/s validada); la torsión la **confirma el médico**.
-- El artefacto es un **FHIR R4 Clinical Case Bundle** (perfiles CL Core donde existen), **no un IPS-CL** completo.
-- La clasificación regulatoria (FDA) es una **hipótesis** dependiente del intended use, no una clasificación confirmada.
+## Limitations (honest)
+- **Not approved for clinical use.** The safety rails (invariant families A–E) are **signed
+  off by the subspecialist otolaryngologist** (round 1); the **diagnostic weights and the A7
+  threshold remain provisional** (round 2). No prospective validation.
+- Nystagmus tracking is **experimental** (relative velocities, no validated °/s calibration);
+  torsion is **confirmed by the physician**.
+- The artifact is a **FHIR R4 Clinical Case Bundle** (CL Core profiles where they exist),
+  **not** a complete IPS-CL.
+- The regulatory classification (FDA) is a **hypothesis** contingent on intended use, not a
+  confirmed classification.
 
 ## Claude Code Safety Harness
-Patrón Claude-native reutilizable (`.claude/`): cuando Claude Code edita un
-archivo *safety-critical* (red flags, rieles, reasoner, orchestrator, contracts),
-un **hook** (`hooks/verify-clinical-invariants.sh`) corre automáticamente los
-tests de **invariante** relevantes (INV-1/2/4/5/7/8) y **bloquea** si se rompió
-una garantía de seguridad. La **skill** `clinical-rail-authoring` guía la
-conversión de una regla firmada por el especialista en código verificable — con
-tests adversariales obligatorios, sin que el modelo decida clínica. *Claude
-convierte expertise humano en artefactos verificables; el runtime determinista
-los hace confiables.*
+A reusable Claude-native pattern used to build this repo: whenever Claude Code edits a
+*safety-critical* file (red flags, rails, reasoner, orchestrator, contracts), a **hook**
+automatically runs the relevant **invariant** tests (INV-1/2/4/5/7/8) and **blocks** the
+edit if a safety guarantee broke. A companion **skill** guides turning a specialist-signed
+rule into verifiable code — with mandatory adversarial tests, without the model ever making
+the clinical call. *Claude turns human expertise into verifiable artifacts; the
+deterministic runtime makes them trustworthy.*
 
-## Estructura
+## Layout
 - `backend/clinibrium/` — engines, rails, reasoner, orchestrator, audit, storage, fhir, api, grounding, ml_client, contracts.
-- `ml_engine/` — Track B: capa de confianza ML agnóstica de dominio (paquete aislado, experimental/sintético).
-- `.claude/` — Safety Harness (hook de invariantes + skill de autoría de rieles).
-- `frontend/` — Next.js: landing (`/`), pipeline demo (`/demo`, con onboarding) y módulo Dix-Hallpike (`/dix-hallpike`).
-- `docker-compose.yml` — `pgvector/pgvector:pg16`. · `check.sh` — gate.
+- `ml_engine/` — Track B: domain-agnostic ML confidence layer (isolated package, experimental/synthetic).
+- `frontend/` — Next.js: landing (`/`), pipeline demo (`/demo`, with onboarding) and Dix-Hallpike module (`/dix-hallpike`).
+- `docs/CONTRACT_predict.md` — frozen `POST /predict` contract (track A ↔ B boundary).
+- `docker-compose.yml` — `pgvector/pgvector:pg16`. · `check.sh` — CI gate.
+
+## License
+MIT — see [LICENSE](LICENSE). Not for clinical use; see Limitations above.
