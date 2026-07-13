@@ -346,3 +346,31 @@ Design records (`ARCHITECTURE.md`, append-only AD-n decisions and INV-n invarian
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) (with an explicit patent grant) and [NOTICE](NOTICE) (third-party and prior-art attributions). Not for clinical use; see [Scope and honesty](#scope-honesty-and-roadmap) above.
+
+## References
+
+The clinical logic, the ICVD-based differential, and the machine-learning methods in this repository paraphrase and build on the sources below. The vestibular classification criteria (ICVD / Bárány Society) are incorporated by paraphrase, never reproduced verbatim.
+
+1. Callejas Pastor, C. A., Ryu, H. T., Joo, J. S., Ku, Y., & Suh, M.-W. (2025). Clinical decision support for vestibular diagnosis: Large-scale machine learning with lived experience coaching. npj Digital Medicine, 8(1), Article 487. https://doi.org/10.1038/s41746-025-01880-z
+
+2. Carrillo-Larco, R. M., Lovón-Melgarejo, J., Castillo-Cara, M., & Bravo-Rocca, G. (2026). PeruMedQA: Benchmarking large language models (LLMs) on Peruvian medical exams—Dataset construction and evaluation. Medical Science Educator. Advance online publication. https://doi.org/10.1007/s40670-026-02692-w
+
+3. Jin, Y., Hu, Z., Zhang, W., Xie, W., Shuai, J., Shen, X., & Feng, Z. (2025). LLM-adapted interpretation framework for machine learning models (Version 1) [Preprint]. arXiv. https://arxiv.org/abs/2507.21179v1
+
+4. Kattah, J. C., Talkad, A. V., Wang, D. Z., Hsieh, Y.-H., & Newman-Toker, D. E. (2009). HINTS to diagnose stroke in the acute vestibular syndrome: Three-step bedside oculomotor examination more sensitive than early MRI diffusion-weighted imaging. Stroke, 40(11), 3504–3510. https://doi.org/10.1161/STROKEAHA.109.551234
+
+5. Kim, J.-S., Newman-Toker, D. E., Kerber, K. A., Jahn, K., Bertholon, P., Waterston, J., Lee, H., Bisdorff, A., & Strupp, M. (2022). Vascular vertigo and dizziness: Diagnostic criteria: Consensus document of the Committee for the Classification of Vestibular Disorders of the Bárány Society. Journal of Vestibular Research, 32(3), 205–222. https://doi.org/10.3233/VES-210169
+
+6. Lempert, T., Olesen, J., Furman, J., Waterston, J., Seemungal, B., Carey, J., Bisdorff, A., Versino, M., Evers, S., Kheradmand, A., & Newman-Toker, D. (2022). Vestibular migraine: Diagnostic criteria (Update). Journal of Vestibular Research, 32(1), 1–6. https://doi.org/10.3233/VES-201644 [Original: Lempert, T., et al. (2012). J. Vestib. Res., 22(4), 167–172. https://doi.org/10.3233/VES-2012-0453]
+
+7. Ley N.º 21.719 de 2024, Regula la protección y el tratamiento de los datos personales y crea la Agencia de Protección de Datos Personales [Law No. 21,719 of 2024, Regulating the protection and processing of personal data and creating the Personal Data Protection Agency], Diario Oficial [D.O.] (Dec. 13, 2024) (Chile). https://www.bcn.cl/leychile/navegar?idNorma=1209272
+
+8. Lopez-Escamez, J. A., Carey, J., Chung, W.-H., Goebel, J. A., Magnusson, M., Mandalà, M., Newman-Toker, D. E., Strupp, M., Suzuki, M., Trabalzini, F., & Bisdorff, A. (2015). Diagnostic criteria for Menière's disease. Journal of Vestibular Research, 25(1), 1–7. https://doi.org/10.3233/VES-150549
+
+9. Lundberg, S. M., Erion, G., Chen, H., DeGrave, A., Prutkin, J. M., Nair, B., Katz, R., Himmelfarb, J., Bansal, N., & Lee, S.-I. (2020). From local explanations to global understanding with explainable AI for trees. Nature Machine Intelligence, 2(1), 56–67. https://doi.org/10.1038/s42256-019-0138-9
+
+10. Staab, J. P., Eckhardt-Henn, A., Horii, A., Jacob, R., Strupp, M., Brandt, T., & Bronstein, A. (2017). Diagnostic criteria for persistent postural-perceptual dizziness (PPPD): Consensus document of the Committee for the Classification of Vestibular Disorders of the Bárány Society. Journal of Vestibular Research, 27(4), 191–208. https://doi.org/10.3233/VES-170622
+
+11. Strobl, R., Grözinger, M., Zwergal, A., Huppert, D., Filippopulos, F., & Grill, E. (2021). A set of eight key questions helps to classify common vestibular disorders: Results from the DizzyReg patient registry. Frontiers in Neurology, 12, Article 670944. https://doi.org/10.3389/fneur.2021.670944
+
+12. Tang, X., Ye, W., Ou, Y., Ye, H., Zhu, X., Huang, D., Liu, J., Zhao, F., Deng, W., Li, C., Cai, W., Zheng, Y., Zeng, J., & Cai, Y. (2025). Development and validation of a machine learning model for detection and classification of vertigo. The Laryngoscope, 135(5), 1652–1660.
