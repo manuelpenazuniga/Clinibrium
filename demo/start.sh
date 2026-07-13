@@ -26,10 +26,26 @@ die()  { printf '\033[31m[demo] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 # Load a local .env (e.g. ANTHROPIC_API_KEY) if present — never committed.
 if [[ -f "$ROOT/.env" ]]; then set -a; . "$ROOT/.env"; set +a; fi
 
+# Refuse to start if any demo port is already taken (codex-audit-3 Alta 5):
+# we NEVER kill a process we did not start, so the ports must be ours alone.
+# This also makes the port-based cleanup below safe — anything listening on
+# these ports at exit was spawned by this run.
+for port in 8000 8001 3000; do
+  if lsof -ti "tcp:$port" >/dev/null 2>&1; then
+    die "port $port is already in use — stop that process first (lsof -i tcp:$port) or free the port"
+  fi
+done
+
 PIDS=()
 cleanup() {
   log "stopping…"
-  for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in "${PIDS[@]:-}"; do
+    pkill -P "$pid" 2>/dev/null || true   # children of the launcher subshells (uvicorn/npm)
+    kill "$pid" 2>/dev/null || true
+  done
+  # Backstop for grandchildren (next dev workers, uvicorn reloaders): the
+  # preflight guaranteed these ports were free at startup, so any listener
+  # now belongs to this run.
   for port in 8000 8001 3000; do lsof -ti "tcp:$port" 2>/dev/null | xargs kill -9 2>/dev/null || true; done
 }
 trap cleanup EXIT INT TERM
