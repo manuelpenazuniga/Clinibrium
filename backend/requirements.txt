@@ -1,0 +1,3 @@
+# Railway/Railpack entrypoint: install this package (deps declared in pyproject.toml).
+# Local dev keeps using its venv + `pip install -e ".[dev]"` (demo/start.sh).
+.
