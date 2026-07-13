@@ -29,7 +29,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Clinibrium — VertigoDx",
+  title: "Clinibrium",
   description:
     "Apoyo diagnóstico otoneurológico que demuestra cómo fallar de forma segura: las capas deterministas fijan la urgencia, Claude explica y el médico decide.",
 };

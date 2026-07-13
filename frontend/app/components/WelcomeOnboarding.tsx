@@ -84,7 +84,7 @@ export default function WelcomeOnboarding({
       >
         <header className="welcome-top">
           <span className="welcome-wordmark">
-            Clinibrium <span className="welcome-engine">VertigoDx</span>
+            Clinibrium <span className="welcome-engine">beta version</span>
           </span>
           <LanguageSwitch compact />
         </header>

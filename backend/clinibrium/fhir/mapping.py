@@ -112,7 +112,7 @@ _EXT_QUESTIONNAIRE_VERSION: str = (
 _EXT_REASONER_DEGRADED: str = f"{_CLINIBRIUM_BASE}/extension-reasoner-degraded"
 _EXT_RAIL_TRIGGERED: str = f"{_CLINIBRIUM_BASE}/extension-rail-triggered"
 
-# Local code systems (Clinibrium / VertigoDx domain vocabulary).
+# Local code systems (Clinibrium domain vocabulary).
 _CS_SYMPTOM_DURATION: str = "http://clinibrium.cl/fhir/CodeSystem/symptom-duration"
 _CS_ONSET: str = "http://clinibrium.cl/fhir/CodeSystem/onset"
 _CS_TRIGGER: str = "http://clinibrium.cl/fhir/CodeSystem/trigger"

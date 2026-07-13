@@ -1,4 +1,4 @@
-"""VertigoDx evaluation pipeline — composes all modules.
+"""Clinibrium evaluation pipeline — composes all modules.
 
 It is the ONLY module that knows the full graph:
     orchestrator → engines + reasoner + rails + ml_client + audit + grounding + contracts
@@ -108,7 +108,7 @@ async def evaluate(
     kill_reasoner: bool = False,
     lang: str = "es",
 ) -> PipelineResult:
-    """Evaluates a complete clinical case — end-to-end VertigoDx pipeline.
+    """Evaluates a complete clinical case — end-to-end Clinibrium pipeline.
 
     Args:
         features: de-identified CaseFeatures of the case.

@@ -35,7 +35,7 @@ export default function SiteHeader() {
         <div className="site-header-inner">
           <Link href="/" className="wordmark">
             <span className="wordmark-name">Clinibrium</span>
-            <span className="wordmark-engine">VertigoDx</span>
+            <span className="wordmark-engine">beta version</span>
           </Link>
           <nav className="site-nav" aria-label={t.header.navAria}>
             {navLinks.map(({ href, label }) => (

@@ -1,4 +1,4 @@
-"""Shared enums for the VertigoDx domain (structured vocabulary).
+"""Shared enums for the Clinibrium domain (structured vocabulary).
 
 Leaf: this module imports NOTHING from `clinibrium.*` except within the
 `clinibrium.contracts` package itself.

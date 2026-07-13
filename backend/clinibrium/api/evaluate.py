@@ -1,4 +1,4 @@
-"""`POST /api/evaluate` endpoint — Server-Sent Events for the VertigoDx pipeline.
+"""`POST /api/evaluate` endpoint — Server-Sent Events for the Clinibrium pipeline.
 
 WIRED on top of `orchestrator.evaluate` (map: api → orchestrator, contracts).
 Importing engines / reasoner / rails / grounding directly is FORBIDDEN:
