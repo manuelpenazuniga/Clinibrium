@@ -102,7 +102,7 @@ const es = {
   },
 
   landing: {
-    heroEyebrow: "VertigoDx Engine · Apoyo diagnóstico otoneurológico",
+    heroEyebrow: "Clinibrium · Apoyo diagnóstico otoneurológico",
     heroTitle1: "El modelo explica.",
     heroTitle2: "Los rieles protegen.",
     heroTitle3: "El médico decide.",
@@ -706,7 +706,7 @@ const en: typeof es = {
   },
 
   landing: {
-    heroEyebrow: "VertigoDx Engine · Otoneurological diagnostic support",
+    heroEyebrow: "Clinibrium · Otoneurological diagnostic support",
     heroTitle1: "The model explains.",
     heroTitle2: "The rails protect.",
     heroTitle3: "The physician decides.",
